@@ -12,8 +12,7 @@ from agno.models.openai import OpenAIChat
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.core.config import settings
-from app.skills.export.docx_exporter import export_docx
-from app.skills.export.pdf_exporter import export_pdf
+from app.skills.export.export_skill import ExportSkill
 
 log = structlog.get_logger(__name__)
 
@@ -34,6 +33,7 @@ class LeadWriterAgent:
             trim_blocks=True,
             lstrip_blocks=True,
         )
+        self._exporter = ExportSkill()
         self._agno = Agent(
             name="lead_writer",
             role="Senior Technical Writer",
@@ -65,7 +65,7 @@ class LeadWriterAgent:
                 + "\n".join(f"- {i}" for i in quality_issues)
             )
 
-        template_name = f"{document_type}/base.md.j2"
+        template_name = f"{document_type}/base.j2"
         try:
             template = self._jinja.get_template(template_name)
             template_content = template.render(**enriched_requirements)
@@ -88,9 +88,15 @@ class LeadWriterAgent:
             if line.startswith("## ")
         ]
 
-        workflow_id = enriched_requirements.get("_workflow_id", "unknown")
-        docx_path = await export_docx(markdown, workflow_id, document_type)
-        pdf_path = await export_pdf(markdown, workflow_id, document_type)
+        project = enriched_requirements.get("project", {})
+        title = project.get("title") or enriched_requirements.get("project_name") or document_type
+        workflow_id = (
+            enriched_requirements.get("_workflow_id")
+            or enriched_requirements.get("workflow_id")
+            or "unknown"
+        )
+        docx_path = await self._exporter.export_docx(markdown, title, workflow_id, document_type)
+        pdf_path = await self._exporter.export_pdf(markdown, title, workflow_id, document_type)
 
         log.info("writer.write.done", sections=len(sections), docx=docx_path)
         return WriterResult(markdown=markdown, sections=sections,
