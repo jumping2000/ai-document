@@ -10,7 +10,7 @@ from typing import Any
 
 import structlog
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from app.core.llm import get_model_adapter
 
 from app.core.config import settings
 
@@ -54,7 +54,7 @@ class RequirementAgent:
                 "Identify implicit requirements the user may have overlooked.",
                 "Always output valid, complete JSON with no prose.",
             ],
-            model=OpenAIChat(id=settings.default_ai_model),
+            model=get_model_adapter(),
             markdown=False,
         )
 

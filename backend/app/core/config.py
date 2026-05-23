@@ -41,8 +41,15 @@ class Settings(BaseSettings):
     # ── AI Models ─────────────────────────────────────────────────────────────
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    # OpenRouter
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://api.openrouter.ai"
+    # Ollama (on-prem or cloud)
+    ollama_url: str = "http://localhost:11434"
+    ollama_api_key: str = ""
+
     default_ai_model: str = "gpt-4o"
-    default_ai_provider: Literal["openai", "anthropic"] = "openai"
+    default_ai_provider: Literal["openai", "anthropic", "openrouter", "ollama"] = "openai"
 
     # ── MCP / RAG ─────────────────────────────────────────────────────────────
     mcp_server_url: str = "http://localhost:8001"

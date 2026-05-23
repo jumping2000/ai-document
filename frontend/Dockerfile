@@ -3,7 +3,13 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --frozen-lockfile
+# Use `npm ci` when a lockfile exists, otherwise fall back to `npm install`.
+# This prevents CI/build failures when `package-lock.json` is not committed.
+RUN if [ -f package-lock.json ]; then \
+      npm ci --frozen-lockfile; \
+    else \
+      npm install; \
+    fi
 
 COPY . .
 RUN npm run build

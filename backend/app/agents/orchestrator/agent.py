@@ -8,7 +8,7 @@ import re
 import time
 import structlog
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from app.core.llm import get_model_adapter
 
 from app.core.config import settings
 from app.workflows.state_machine.machine import (
@@ -61,7 +61,7 @@ class OrchestratorAgent:
                 "Decide whether quality issues require re-writing or re-enrichment.",
                 "Never proceed with incomplete or contradictory requirements.",
             ],
-            model=OpenAIChat(id=settings.default_ai_model),
+            model=get_model_adapter(),
             markdown=True,
         )
 

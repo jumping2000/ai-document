@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from app.core.llm import get_model_adapter
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.core.config import settings
@@ -46,7 +46,7 @@ class LeadWriterAgent:
                 "Include a requirements traceability matrix.",
                 "Cite standards and regulations correctly.",
             ],
-            model=OpenAIChat(id=settings.default_ai_model),
+            model=get_model_adapter(),
             markdown=True,
         )
 

@@ -9,7 +9,7 @@ import structlog
 from dataclasses import dataclass, field
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from app.core.llm import get_model_adapter
 
 from app.core.config import settings
 
@@ -50,7 +50,7 @@ class QualityAgent:
                 "Return a structured JSON quality report.",
                 "Be strict: a score above 0.75 requires ALL critical sections present.",
             ],
-            model=OpenAIChat(id=settings.default_ai_model),
+            model=get_model_adapter(),
             markdown=False,
         )
 

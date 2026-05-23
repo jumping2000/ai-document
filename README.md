@@ -1,7 +1,20 @@
 # AI Document Platform
 
+[![Build Status](https://img.shields.io/github/actions/workflow/status/jumping2000/ai-document/ci.yml?branch=master)](https://github.com/jumping2000/ai-document/actions)
+[![Codecov](https://img.shields.io/codecov/c/github/jumping2000/ai-document.svg)](https://codecov.io/gh/jumping2000/ai-document)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **Enterprise AI platform for automated IT procurement document generation.**
-Multi-agent workflow (Agno) · FastAPI · React · PostgreSQL · Redis · Docker
+
+- 🧭 Overview: a modular platform that automatically generates procurement documents, technical specifications, and tender dossiers using a multi-agent workflow.
+- ⚙️ Architecture: Python backend (FastAPI) for asynchronous workflows, React/TypeScript frontend for real-time monitoring, persistent services (Postgres) and cache (Redis).
+- 🧠 LLM & Agents: provider-agnostic LLM integration (OpenAI, Anthropic, OpenRouter, Ollama) orchestrated by specialized agents (Requirement, Procurement, Orchestrator, LeadWriter, Quality).
+- 🔒 Security & governance: secret management via `.env`/CI, on-premise options (Ollama) for sensitive data, and non-sharing policies.
+- ⚡ Scalability: containerized components for deployment with Docker Compose/orchestration; asynchronous workers and retry budgets for resilience.
+- 🧾 Output: export to `docx`, `pdf`, and markdown formats; audit trail and quality reports.
+
+Primary technologies: Agno (multi-agent), FastAPI, React, SQLAlchemy/AsyncPG, Redis, Alembic, Structlog, Jinja2, Docker.
 
 ---
 
@@ -145,6 +158,89 @@ MCP_SERVER_URL=http://...          # External RAG/KB (optional)
 WORKFLOW_QUALITY_THRESHOLD=0.75    # Min pass score (0.0–1.0)
 WORKFLOW_MAX_RETRIES=3             # Retry budget per loop
 ```
+
+### Env file placement and Docker Compose
+
+- Docker Compose variable substitution reads a `.env` file located next to `docker-compose.yml` (project root). This `.env` is used for compose interpolation like `${POSTGRES_PASSWORD}`.
+- The `backend` container also loads runtime environment variables from `backend/.env` via `env_file:` (see `docker-compose.yml`). This is the recommended place to keep service-specific secrets for local development.
+- Recommendation:
+        - Keep a project-level `.env` for compose-level values (copy from `./.env.example`).
+        - Keep `backend/.env` for backend runtime secrets (copy from `backend/.env.example`).
+        - Do NOT commit `.env` files. Use CI/CD secrets for production values.
+
+Copy examples:
+
+```bash
+# Project-level .env
+cp .env.example .env
+
+# Backend runtime .env
+cp backend/.env.example backend/.env
+```
+
+To run with the optional development services (Ollama, pgAdmin, Redis Commander):
+
+```bash
+docker compose --profile dev up --build
+```
+
+### LLM Providers (examples)
+
+You can select the LLM provider via `DEFAULT_AI_PROVIDER` and the model via `DEFAULT_AI_MODEL` in `backend/.env`.
+
+- OpenAI (cloud)
+
+```env
+DEFAULT_AI_PROVIDER=openai
+DEFAULT_AI_MODEL=gpt-4o
+OPENAI_API_KEY=sk-...
+```
+
+Quick smoke test (requires `openai` Python SDK installed):
+
+```bash
+python - <<'PY'
+import os
+import openai
+openai.api_key = os.getenv('OPENAI_API_KEY')
+print(openai.Model.list()[:1])
+PY
+```
+
+- OpenRouter (broker/multi-provider)
+
+```env
+DEFAULT_AI_PROVIDER=openrouter
+DEFAULT_AI_MODEL=gpt-5.4-mini
+OPENROUTER_API_KEY=or-...
+OPENROUTER_BASE_URL=https://api.openrouter.ai
+```
+
+Quick check (basic HTTP health/example request — adjust endpoint per OpenRouter docs):
+
+```bash
+curl -s -H "Authorization: Bearer $OPENROUTER_API_KEY" "$OPENROUTER_BASE_URL/health" || echo "no health endpoint; try provider-specific chat endpoint"
+```
+
+- Ollama (local / on‑prem)
+
+```env
+DEFAULT_AI_PROVIDER=ollama
+DEFAULT_AI_MODEL=llama3.1
+OLLAMA_URL=http://localhost:11434
+OLLAMA_API_KEY=
+```
+
+Smoke test (health):
+
+```bash
+curl -fsS $OLLAMA_URL/health && echo "Ollama OK" || echo "Ollama not responding"
+```
+
+Notes:
+- Use `backend/.env` for backend runtime configuration (copy from `backend/.env.example`).
+- For production, set provider keys in your CI/CD secret store rather than committing `.env` files.
+
 
 ---
 

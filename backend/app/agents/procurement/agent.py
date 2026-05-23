@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from app.core.llm import get_model_adapter
 
 from app.core.config import settings
 from app.mcp.client.mcp_client import MCPClient
@@ -37,7 +37,7 @@ class ProcurementAgent:
                 "Reference Italian public procurement code (D.Lgs. 36/2023) for capitolati.",
                 "Return enriched requirements as structured JSON.",
             ],
-            model=OpenAIChat(id=settings.default_ai_model),
+            model=get_model_adapter(),
             markdown=False,
         )
 
