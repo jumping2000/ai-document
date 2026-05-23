@@ -1,89 +1,87 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
-**/__pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
 *.egg-info/
-.installed.cfg
 *.egg
-MANIFEST
-
-# Virtual environments
-.venv/
+dist/
+build/
+.env
+.env.*
+.envrc
 venv/
-ENV/
-env/
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-debug.log
+.venv/
+**/.venv/
+.Python
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
+# Virtualenv
+env/
+ENV/
+.venv/
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# dotenv
-.env
-.env.*
-
-# mypy
-.mypy_cache/
-.dmypy.json
-
-# Ruff
-.ruff_cache/
+# Installer logs
+pip-log.txt
 
 # VS Code
 .vscode/
 
-# macOS
-.DS_Store
+# JetBrains
+.idea/
 
-# Windows
+# OS files
+.DS_Store
 Thumbs.db
-Desktop.ini
+
+# Node
+node_modules/
 
 # Logs
 *.log
 
-# Local settings
-*.local
+# Byte-compiled / optimized / DLL files
+*.so
+*.dylib
+*.pyd
+
+# pytest
+.pytest_cache/
+
+# Build artifacts
+*.egg-info/
+.eggs/
+
+# Temporary files
+*.swp
+*~
+
+# Local configuration
+local_settings.py
+
+# uv lock and cache
+backend/uv.lock
+backend/.venv/
+
+# Generated docs
+docs/_build/
+
+# Secrets
+secrets.env
+
+# Misc
+*.sqlite3
+*.db
+
+# Ignore compiled python caches in backend
+backend/**/__pycache__/
+backend/**/*.pyc
+
+# Ignore compiled python caches in app
+app/**/__pycache__/
+app/**/*.pyc
