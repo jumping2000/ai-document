@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+*.egg
+dist/
+build/
+.env
+.env.*
+.envrc
+venv/
+.venv/
+**/.venv/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtualenv
+env/
+ENV/
+.venv/
+
+# Installer logs
+pip-log.txt
+
+# VS Code
+.vscode/
+
+# JetBrains
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# Byte-compiled / optimized / DLL files
+*.so
+*.dylib
+*.pyd
+
+# pytest
+.pytest_cache/
+
+# Build artifacts
+*.egg-info/
+.eggs/
+
+# Temporary files
+*.swp
+*~
+
+# Local configuration
+local_settings.py
+
+# uv lock and cache
+backend/uv.lock
+backend/.venv/
+
+# Generated docs
+docs/_build/
+
+# Secrets
+secrets.env
+
+# Misc
+*.sqlite3
+*.db
+
+# Ignore compiled python caches in backend
+backend/**/__pycache__/
+backend/**/*.pyc
+
+# Ignore compiled python caches in app
+app/**/__pycache__/
+app/**/*.pyc
