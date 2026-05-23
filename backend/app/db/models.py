@@ -39,7 +39,7 @@ class Workflow(TimestampMixin, Base):
     __tablename__ = "workflows"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(500))
     document_type: Mapped[str] = mapped_column(String(50))  # capitolato | requisiti
     state: Mapped[str] = mapped_column(String(50), default="INIT", index=True)

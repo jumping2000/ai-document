@@ -19,7 +19,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
+from app.db.session import get_db, AsyncSessionLocal
+from app.db.models import Workflow
 from app.workflows.execution.runner import WorkflowRunner
 
 log = structlog.get_logger(__name__)
@@ -76,30 +77,30 @@ async def start_workflow(
     """
     workflow_id = str(uuid.uuid4())
 
-    _workflows[workflow_id] = {
-        "workflow_id": workflow_id,
-        "state": "INIT",
-        "document_type": req.document_type,
-        "title": req.title,
-        "retry_count": 0,
-        "quality_score": None,
-        "result": None,
-    }
-
     initial_input = {
         "document_type": req.document_type,
         "raw_description": req.raw_description,
         "form_data": req.form_data,
+        "title": req.title,
     }
 
+    # Persist initial workflow row so clients can query immediately
+    wf = Workflow(
+        id=uuid.UUID(workflow_id),
+        title=req.title,
+        document_type=req.document_type,
+        state="INIT",
+        retry_count=0,
+        metadata_=initial_input,
+    )
+    db.add(wf)
+    await db.commit()
+    await db.refresh(wf)
+
     async def _run_workflow() -> None:
-        runner = WorkflowRunner(db)
-        result = await runner.run(workflow_id, req.document_type, initial_input)
-        _workflows[workflow_id].update({
-            "state": result.get("status", "FAILED").upper(),
-            "quality_score": result.get("quality_score"),
-            "result": result,
-        })
+        async with AsyncSessionLocal() as bg_db:
+            runner = WorkflowRunner(bg_db)
+            await runner.run(workflow_id, req.document_type, initial_input)
 
     background_tasks.add_task(_run_workflow)
 
@@ -108,35 +109,53 @@ async def start_workflow(
 
 
 @router.get("/{workflow_id}")
-async def get_workflow(workflow_id: str) -> dict[str, Any]:
+async def get_workflow(workflow_id: str, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     """Get current workflow state and metadata."""
-    workflow = _workflows.get(workflow_id)
-    if not workflow:
+    try:
+        wf = await db.get(Workflow, uuid.UUID(workflow_id))
+    except Exception:
+        wf = None
+    if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
-    return workflow
+    return {
+        "workflow_id": str(wf.id),
+        "state": wf.state,
+        "document_type": wf.document_type,
+        "title": wf.title,
+        "retry_count": wf.retry_count,
+        "quality_score": None,
+        "created_at": wf.created_at.isoformat() if wf.created_at else None,
+        "updated_at": wf.updated_at.isoformat() if wf.updated_at else None,
+    }
 
 
 @router.post("/{workflow_id}/approve")
 async def approve_workflow(
     workflow_id: str,
     req: ApproveRequest,
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Human-in-the-loop approval gate."""
-    workflow = _workflows.get(workflow_id)
-    if not workflow:
+    try:
+        wf = await db.get(Workflow, uuid.UUID(workflow_id))
+    except Exception:
+        wf = None
+    if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    if workflow["state"] not in ("QUALITY_ANALYSIS", "COMPLETED"):
+    if wf.state not in ("QUALITY_ANALYSIS", "COMPLETED"):
         raise HTTPException(
             status_code=400,
-            detail=f"Workflow in state {workflow['state']} does not require approval",
+            detail=f"Workflow in state {wf.state} does not require approval",
         )
 
     action = "approved" if req.approved else "rejected"
     log.info("workflow_approval", workflow_id=workflow_id, action=action, comment=req.comment)
 
-    workflow["state"] = "COMPLETED" if req.approved else "FAILED"
-    workflow["approval"] = {"approved": req.approved, "comment": req.comment}
+    wf.state = "COMPLETED" if req.approved else "FAILED"
+    wf.metadata_ = {**(wf.metadata_ or {}), "approval": {"approved": req.approved, "comment": req.comment}}
+    db.add(wf)
+    await db.commit()
     return {"workflow_id": workflow_id, "action": action}
 
 
@@ -148,24 +167,25 @@ async def retry_workflow(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Manually trigger retry from FAILED state."""
-    workflow = _workflows.get(workflow_id)
-    if not workflow:
+    try:
+        wf = await db.get(Workflow, uuid.UUID(workflow_id))
+    except Exception:
+        wf = None
+    if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    if workflow["state"] != "FAILED":
+    if wf.state != "FAILED":
         raise HTTPException(status_code=400, detail="Only FAILED workflows can be retried")
 
-    workflow["state"] = "INIT"
-    workflow["retry_count"] = workflow.get("retry_count", 0) + 1
+    wf.state = "INIT"
+    wf.retry_count = (wf.retry_count or 0) + 1
+    db.add(wf)
+    await db.commit()
 
     async def _retry() -> None:
-        runner = WorkflowRunner(db)
-        result = await runner.run(
-            workflow_id,
-            workflow["document_type"],
-            workflow.get("initial_input", {}),
-        )
-        workflow.update({"state": result.get("status", "FAILED").upper(), "result": result})
+        async with AsyncSessionLocal() as bg_db:
+            runner = WorkflowRunner(bg_db)
+            await runner.run(workflow_id, wf.document_type, wf.metadata_ or {})
 
     background_tasks.add_task(_retry)
     log.info("workflow_retry", workflow_id=workflow_id, reason=req.reason)
