@@ -1,0 +1,167 @@
+{# Capitolato di Gara - Base Template #}
+{# Variables injected: enriched_requirements (dict) #}
+
+{% set proj = enriched_requirements.get("enriched_requirements", {}).get("project", {}) %}
+{% set scope = enriched_requirements.get("enriched_requirements", {}).get("scope", {}) %}
+{% set reqs_f = enriched_requirements.get("enriched_requirements", {}).get("functional_requirements", []) %}
+{% set reqs_t = enriched_requirements.get("enriched_requirements", {}).get("technical_requirements", []) %}
+{% set sla = enriched_requirements.get("enriched_requirements", {}).get("sla", {}) %}
+{% set security = enriched_requirements.get("enriched_requirements", {}).get("security_compliance", {}) %}
+{% set integrations = enriched_requirements.get("enriched_requirements", {}).get("integrations", []) %}
+{% set timeline = enriched_requirements.get("enriched_requirements", {}).get("timeline", {}) %}
+{% set budget = enriched_requirements.get("enriched_requirements", {}).get("budget", {}) %}
+{% set reg_refs = enriched_requirements.get("regulatory_references", []) %}
+{% set eval_criteria = enriched_requirements.get("evaluation_criteria", []) %}
+
+# {{ proj.get("title", "CAPITOLATO DI GARA") }}
+
+**Codice:** {{ proj.get("reference_code", "TBD") }}
+**Organizzazione:** {{ proj.get("organization", "") }}
+**Data:** {{ "oggi" }}
+**Versione:** 1.0
+
+---
+
+## 1. Premessa e Contesto
+
+{{ proj.get("description", "") }}
+
+### 1.1 Obiettivi del Progetto
+{% for obj in scope.get("objectives", []) %}
+- {{ obj }}
+{% endfor %}
+
+### 1.2 Perimetro della Fornitura
+
+**In Scope:**
+{% for item in scope.get("in_scope", []) %}
+- {{ item }}
+{% endfor %}
+
+**Out of Scope:**
+{% for item in scope.get("out_of_scope", []) %}
+- {{ item }}
+{% endfor %}
+
+---
+
+## 2. Oggetto dell'Appalto
+
+[SEZIONE DA COMPLETARE]
+
+---
+
+## 3. Requisiti Funzionali
+
+{% if reqs_f %}
+| ID | Requisito | Descrizione | Priorità |
+|----|-----------|-------------|----------|
+{% for r in reqs_f %}
+| {{ r.get("id", "") }} | {{ r.get("title", "") }} | {{ r.get("description", "") }} | {{ r.get("priority", "") }} |
+{% endfor %}
+{% else %}
+[Requisiti funzionali da definire]
+{% endif %}
+
+---
+
+## 4. Requisiti Tecnici e Architetturali
+
+{% if reqs_t %}
+{% for r in reqs_t %}
+### {{ r.get("id", "") }} — {{ r.get("category", "") }}
+{{ r.get("description", "") }}
+{% if r.get("constraint") %}> **Vincolo:** {{ r.get("constraint") }}{% endif %}
+
+{% endfor %}
+{% else %}
+[Requisiti tecnici da definire]
+{% endif %}
+
+---
+
+## 5. Requisiti di Sicurezza e Compliance
+
+### 5.1 Standard Applicabili
+{% for std in security.get("standards", []) %}
+- {{ std }}
+{% endfor %}
+
+### 5.2 Requisiti di Sicurezza
+{% for req in security.get("requirements", []) %}
+- {{ req }}
+{% endfor %}
+
+{% if reg_refs %}
+### 5.3 Riferimenti Normativi
+{% for ref in reg_refs %}
+- **{{ ref.get("code", "") }}** — {{ ref.get("description", "") }}
+{% endfor %}
+{% endif %}
+
+---
+
+## 6. Service Level Agreement (SLA)
+
+| Parametro | Valore Richiesto |
+|-----------|-----------------|
+| Disponibilità | {{ sla.get("availability", "99.5%") }} |
+| RTO | {{ sla.get("rto", "4h") }} |
+| RPO | {{ sla.get("rpo", "1h") }} |
+| Tempo di Risposta | {{ sla.get("response_time", "< 3s") }} |
+
+{% for kpi in sla.get("custom_kpis", []) %}
+- {{ kpi }}
+{% endfor %}
+
+---
+
+## 7. Integrazioni e Interoperabilità
+
+{% if integrations %}
+| Sistema | Tipo | Protocollo |
+|---------|------|-----------|
+{% for i in integrations %}
+| {{ i.get("system", "") }} | {{ i.get("type", "") }} | {{ i.get("protocol", "") }} |
+{% endfor %}
+{% else %}
+[Integrazioni da definire]
+{% endif %}
+
+---
+
+## 8. Piano di Progetto e Milestone
+
+- **Avvio progetto:** {{ timeline.get("project_start", "TBD") }}
+- **Go-Live:** {{ timeline.get("go_live", "TBD") }}
+
+{% for ms in timeline.get("milestones", []) %}
+- {{ ms }}
+{% endfor %}
+
+---
+
+## 9. Criteri di Valutazione e Punteggi
+
+{% if eval_criteria %}
+| Criterio | Peso | Descrizione |
+|----------|------|-------------|
+{% for c in eval_criteria %}
+| {{ c.get("criterion", "") }} | {{ c.get("weight", 0) }}% | {{ c.get("description", "") }} |
+{% endfor %}
+{% else %}
+[Criteri di valutazione da definire]
+{% endif %}
+
+---
+
+## 10. Condizioni Economiche
+
+- **Modello:** {{ budget.get("model", "TBD") }}
+- **Valore indicativo:** {{ budget.get("indicative_value", "TBD") }} {{ budget.get("currency", "EUR") }}
+
+---
+
+## 11. Allegati Tecnici
+
+[Elenco allegati da definire]

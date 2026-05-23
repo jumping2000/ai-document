@@ -1,0 +1,178 @@
+{# Requisiti Funzionali e Tecnici - Base Template #}
+{% set proj = enriched_requirements.get("enriched_requirements", {}).get("project", {}) %}
+{% set scope = enriched_requirements.get("enriched_requirements", {}).get("scope", {}) %}
+{% set reqs_f = enriched_requirements.get("enriched_requirements", {}).get("functional_requirements", []) %}
+{% set reqs_t = enriched_requirements.get("enriched_requirements", {}).get("technical_requirements", []) %}
+{% set security = enriched_requirements.get("enriched_requirements", {}).get("security_compliance", {}) %}
+{% set integrations = enriched_requirements.get("enriched_requirements", {}).get("integrations", []) %}
+{% set stakeholders = enriched_requirements.get("enriched_requirements", {}).get("stakeholders", []) %}
+{% set acceptance = enriched_requirements.get("enriched_requirements", {}).get("acceptance_criteria", []) %}
+{% set reg_refs = enriched_requirements.get("regulatory_references", []) %}
+{% set tech_standards = enriched_requirements.get("technical_standards", []) %}
+{% set nfr = enriched_requirements.get("enriched_requirements", {}).get("sla", {}) %}
+
+# {{ proj.get("title", "DOCUMENTO REQUISITI") }}
+
+**Codice:** {{ proj.get("reference_code", "REQ-001") }}
+**Organizzazione:** {{ proj.get("organization", "") }}
+**Versione:** 1.0
+**Stato:** DRAFT
+
+---
+
+## 1. Introduzione e Scopo
+
+{{ proj.get("description", "") }}
+
+### 1.1 Scopo del Documento
+Questo documento descrive i requisiti funzionali e tecnici per la realizzazione di **{{ proj.get("title", "") }}**.
+
+### 1.2 Stakeholder
+
+{% if stakeholders %}
+| Ruolo | Responsabilità |
+|-------|----------------|
+{% for s in stakeholders %}
+| {{ s.get("role", "") }} | {{ s.get("responsibilities", "") }} |
+{% endfor %}
+{% else %}
+[Stakeholder da definire]
+{% endif %}
+
+---
+
+## 2. Contesto e Obiettivi
+
+### 2.1 Obiettivi di Business
+{% for obj in scope.get("objectives", []) %}
+- {{ obj }}
+{% endfor %}
+
+### 2.2 Perimetro
+**In Scope:**
+{% for item in scope.get("in_scope", []) %}
+- {{ item }}
+{% endfor %}
+
+**Out of Scope:**
+{% for item in scope.get("out_of_scope", []) %}
+- {{ item }}
+{% endfor %}
+
+---
+
+## 3. Requisiti Funzionali
+
+{% if reqs_f %}
+| ID | Titolo | Descrizione | Priorità |
+|----|--------|-------------|----------|
+{% for r in reqs_f %}
+| {{ r.get("id", "FR-?") }} | {{ r.get("title", "") }} | {{ r.get("description", "") }} | {{ r.get("priority", "SHOULD") }} |
+{% endfor %}
+{% else %}
+[Da completare]
+{% endif %}
+
+---
+
+## 4. Requisiti Non Funzionali
+
+| Attributo | Valore Richiesto |
+|-----------|-----------------|
+| Disponibilità | {{ nfr.get("availability", "99.5%") }} |
+| RTO | {{ nfr.get("rto", "4h") }} |
+| RPO | {{ nfr.get("rpo", "1h") }} |
+| Tempo Risposta (p95) | {{ nfr.get("response_time", "< 3s") }} |
+
+---
+
+## 5. Requisiti Tecnici
+
+{% if reqs_t %}
+{% for r in reqs_t %}
+### {{ r.get("id", "") }} — {{ r.get("category", "Generale") }}
+{{ r.get("description", "") }}
+
+{% if r.get("constraint") %}
+> **Vincolo tecnico:** {{ r.get("constraint") }}
+{% endif %}
+
+{% endfor %}
+{% else %}
+[Da completare]
+{% endif %}
+
+{% if tech_standards %}
+### 5.1 Standard Tecnici di Riferimento
+
+{% for s in tech_standards %}
+- **{{ s.get("standard", "") }}** — {{ s.get("requirement", "") }}
+{% endfor %}
+{% endif %}
+
+---
+
+## 6. Requisiti di Sicurezza
+
+### 6.1 Standard Applicabili
+{% for std in security.get("standards", []) %}
+- {{ std }}
+{% endfor %}
+
+### 6.2 Requisiti di Sicurezza Specifici
+{% for req in security.get("requirements", []) %}
+- {{ req }}
+{% endfor %}
+
+{% if reg_refs %}
+### 6.3 Riferimenti Normativi
+{% for ref in reg_refs %}
+- **{{ ref.get("code", "") }}** — {{ ref.get("description", "") }}
+{% endfor %}
+{% endif %}
+
+---
+
+## 7. Requisiti di Integrazione
+
+{% if integrations %}
+| Sistema | Tipo Interfaccia | Protocollo | Note |
+|---------|-----------------|------------|------|
+{% for i in integrations %}
+| {{ i.get("system", "") }} | {{ i.get("type", "") }} | {{ i.get("protocol", "") }} | |
+{% endfor %}
+{% else %}
+Nessuna integrazione esterna richiesta.
+{% endif %}
+
+---
+
+## 8. Criteri di Accettazione
+
+{% if acceptance %}
+{% for ac in acceptance %}
+- {{ ac }}
+{% endfor %}
+{% else %}
+[Da definire]
+{% endif %}
+
+---
+
+## 9. Vincoli e Assunzioni
+
+{% for c in enriched_requirements.get("enriched_requirements", {}).get("constraints", []) %}
+- {{ c }}
+{% endfor %}
+
+---
+
+## 10. Glossario
+
+| Termine | Definizione |
+|---------|-------------|
+| SLA | Service Level Agreement |
+| RTO | Recovery Time Objective |
+| RPO | Recovery Point Objective |
+| GDPR | General Data Protection Regulation (UE 2016/679) |
+| CAD | Codice dell'Amministrazione Digitale (D.Lgs 82/2005) |
