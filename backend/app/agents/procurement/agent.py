@@ -29,7 +29,7 @@ class ProcurementAgent:
         self._agno = Agent(
             name="procurement_specialist",
             role="IT Procurement Specialist",
-            goal="Enrich requirements with standards, regulations, and best practices",
+            description="Enrich requirements with standards, regulations, and best practices",
             instructions=[
                 "Apply ISO 27001, ISO 9001, and GDPR where relevant.",
                 "Add SLA templates from the knowledge base.",

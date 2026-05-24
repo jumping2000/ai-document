@@ -29,6 +29,8 @@ def _install_import_stubs() -> None:
     config_module = ModuleType("app.core.config")
     config_module.settings = SimpleNamespace(
         default_ai_model="gpt-4o",
+        default_ai_provider="openai",
+        openai_api_key="sk-test",
         workflow_quality_threshold=0.75,
         templates_base_path="",
         documents_base_path="",
@@ -171,10 +173,13 @@ def _install_import_stubs() -> None:
     mcp_module = ModuleType("app.mcp.client.mcp_client")
 
     class _MCPClient:
-        async def search_documents(self, query: str, limit: int = 5):
+        async def search_documents(self, query: str, limit: int = 5, filters: dict | None = None):
             return []
+        async def chat(self, message: str, kb_id: str | None = None, top_k: int = 6):
+            return {"answer": "", "sources": [], "search_query": ""}
 
     mcp_module.MCPClient = _MCPClient
+    mcp_module.MCPError = type("MCPError", (Exception,), {})
     sys.modules["app.mcp.client.mcp_client"] = mcp_module
 
 

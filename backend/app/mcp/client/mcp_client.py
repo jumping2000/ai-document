@@ -1,26 +1,22 @@
 """
-MCP Client
+MCP Client — nanoRAG via FastMCP
 
-Wraps the external MCP/RAG server with:
-- typed responses
-- timeout + retry with exponential backoff
-- Redis caching
-- structured logging / tracing
-- connection health check
+Connects to a nanoRAG MCP server (SSE transport) and exposes
+all tools as typed async methods with:
+- lazy connection + explicit lifecycle
+- in-process TTL cache for search/chat
+- structured logging
 
 All functions raise MCPError on unrecoverable failure.
 """
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
-import json
 import time
 from typing import Any
 
-import httpx
 import structlog
+from fastmcp import Client
 
 from app.core.config import settings
 
@@ -33,33 +29,154 @@ class MCPError(Exception):
 
 class MCPClient:
     """
-    HTTP client for the MCP / RAG server.
+    FastMCP client for the nanoRAG knowledge-base server.
 
-    Responsibilities:
-    - search_documents(query, limit) → list[Document]
-    - retrieve_context(doc_ids)     → list[ContextChunk]
-    - semantic_search(query, top_k) → list[SearchResult]
-    - get_template(template_name)   → str
-    - get_regulations(domain)       → list[Regulation]
+    Tools exposed by the server:
 
-    Caching: results cached in Redis for 15 minutes.
-    Retry:   up to mcp_max_retries with exponential backoff.
-    Timeout: mcp_timeout_seconds per request.
+    ┌──────────────────────────┬────────────────────────────────────────┐
+    │ Tool                     │ Signature                              │
+    ├──────────────────────────┼────────────────────────────────────────┤
+    │ nanorag_health           │ () → dict                              │
+    │ nanorag_list_kbs         │ () → list[dict]                        │
+    │ nanorag_list_documents   │ (kb_id: str) → list[dict]              │
+    │ nanorag_get_graph        │ (kb_id, limit=18, min_weight=1) → dict │
+    │ nanorag_get_node_detail  │ (kb_id, entity_id, limit=12) → dict    │
+    │ nanorag_chat             │ (kb_id, message, top_k=6) → dict       │
+    │ nanorag_upload_document  │ (kb_id, file_content, filename) → dict │
+    │ nanorag_delete_document  │ (kb_id, document_id) → dict            │
+    └──────────────────────────┴────────────────────────────────────────┘
+
+    Caching:  search/chat results cached in-process for 15 minutes.
     """
 
     def __init__(self) -> None:
-        self._base_url = settings.mcp_server_url.rstrip("/")
-        self._headers = {
-            "Authorization": f"Bearer {settings.mcp_api_key}",
-            "Content-Type": "application/json",
-            "X-Client": "ai-document-platform/1.0",
-        }
-        self._timeout = httpx.Timeout(settings.mcp_timeout_seconds)
-        self._max_retries = settings.mcp_max_retries
-        self._cache: dict[str, tuple[Any, float]] = {}  # simple in-process cache
+        self._url = settings.mcp_server_url.rstrip("/")
+        self._kb_id = settings.mcp_default_kb_id
+        self._client: Client | None = None
+        self._connected = False
+
+        # In-process TTL cache
+        self._cache: dict[str, tuple[Any, float]] = {}
         self._cache_ttl = 900  # 15 minutes
 
-    # ── Public API ────────────────────────────────────────────────────────────
+    # ── Lifecycle ─────────────────────────────────────────────────────────
+
+    async def connect(self) -> None:
+        """Open SSE transport to the MCP server (idempotent)."""
+        if self._connected:
+            return
+        self._client = Client(self._url)
+        await self._client.__aenter__()
+        self._connected = True
+        log.info("mcp_connected", url=self._url)
+
+    async def disconnect(self) -> None:
+        """Close transport (idempotent)."""
+        if not self._connected or self._client is None:
+            return
+        await self._client.__aexit__(None, None, None)
+        self._connected = False
+        self._client = None
+        log.info("mcp_disconnected")
+
+    async def _ensure_connected(self) -> Client:
+        if not self._connected or self._client is None:
+            await self.connect()
+        assert self._client is not None
+        return self._client
+
+    # ── Public API ────────────────────────────────────────────────────────
+
+    # -- health ------------------------------------------------------------
+
+    async def health_check(self) -> dict[str, Any]:
+        """Returns system status dict from nanorag_health."""
+        return await self._call_tool("nanorag_health", {})
+
+    # -- knowledge bases ---------------------------------------------------
+
+    async def list_kbs(self) -> list[dict[str, Any]]:
+        """List all knowledge bases."""
+        return await self._call_tool("nanorag_list_kbs", {})
+
+    # -- documents ---------------------------------------------------------
+
+    async def list_documents(self, kb_id: str | None = None) -> list[dict[str, Any]]:
+        """List documents in a knowledge base."""
+        return await self._call_tool("nanorag_list_documents", {
+            "kb_id": kb_id or self._kb_id,
+        })
+
+    async def upload_document(
+        self,
+        file_content: bytes,
+        filename: str = "document",
+        kb_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Upload a document. Returns {document_id, chunk_count}."""
+        return await self._call_tool("nanorag_upload_document", {
+            "kb_id": kb_id or self._kb_id,
+            "file_content": file_content,
+            "filename": filename,
+        })
+
+    async def delete_document(
+        self,
+        document_id: str,
+        kb_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Delete a document. Returns {status: 'ok'}."""
+        return await self._call_tool("nanorag_delete_document", {
+            "kb_id": kb_id or self._kb_id,
+            "document_id": document_id,
+        })
+
+    # -- graph -------------------------------------------------------------
+
+    async def get_graph(
+        self,
+        kb_id: str | None = None,
+        limit: int = 18,
+        min_weight: int = 1,
+    ) -> dict[str, Any]:
+        """Snapshot of the knowledge graph."""
+        return await self._call_tool("nanorag_get_graph", {
+            "kb_id": kb_id or self._kb_id,
+            "limit": limit,
+            "min_weight": min_weight,
+        })
+
+    async def get_node_detail(
+        self,
+        entity_id: str,
+        kb_id: str | None = None,
+        evidence_limit: int = 12,
+    ) -> dict[str, Any]:
+        """Entity detail with relationships and supporting documents."""
+        return await self._call_tool("nanorag_get_node_detail", {
+            "kb_id": kb_id or self._kb_id,
+            "entity_id": entity_id,
+            "evidence_limit": evidence_limit,
+        })
+
+    # -- chat / search -----------------------------------------------------
+
+    async def chat(
+        self,
+        message: str,
+        kb_id: str | None = None,
+        top_k: int = 6,
+    ) -> dict[str, Any]:
+        """Grounded chat. Returns {answer, sources, search_query}."""
+        return await self._call_tool(
+            "nanorag_chat",
+            {
+                "kb_id": kb_id or self._kb_id,
+                "message": message,
+                "top_k": top_k,
+            },
+            cache_key=f"chat:{message}:{top_k}",
+        )
 
     async def search_documents(
         self,
@@ -68,142 +185,87 @@ class MCPClient:
         filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Full-text + semantic search across the knowledge base.
+        Backward-compatible search via nanorag_chat.
 
-        Input:  query string, result limit, optional metadata filters
-        Output: list of {source, title, excerpt, relevance_score, metadata}
+        Calls nanorag_chat and extracts the ``sources`` list,
+        returning results in the legacy format:
+        [{source, title, excerpt, relevance_score, metadata}, …]
         """
-        return await self._post(
-            "/search",
-            {"query": query, "limit": limit, "filters": filters or {}},
+        result = await self._call_tool(
+            "nanorag_chat",
+            {
+                "kb_id": self._kb_id,
+                "message": query,
+                "top_k": limit,
+            },
             cache_key=f"search:{query}:{limit}",
         )
+        # nanorag_chat returns {answer, sources, search_query}
+        raw_sources: list[dict[str, Any]] = result.get("sources", []) if isinstance(result, dict) else []
 
-    async def retrieve_context(
+        # Normalise to legacy format
+        return [
+            {
+                "source": s.get("document_id", s.get("source", "")),
+                "title": s.get("title", s.get("document_id", "")),
+                "excerpt": s.get("content", s.get("excerpt", ""))[:500],
+                "relevance_score": s.get("score", s.get("relevance_score", 0.0)),
+                "metadata": s.get("metadata", {}),
+            }
+            for s in raw_sources[:limit]
+        ]
+
+    # ── Internal helpers ──────────────────────────────────────────────────
+
+    async def _call_tool(
         self,
-        doc_ids: list[str],
-        max_tokens: int = 2000,
-    ) -> list[dict[str, Any]]:
-        """
-        Retrieve full context chunks for specific document IDs.
-
-        Output: list of {doc_id, content, metadata}
-        """
-        return await self._post(
-            "/retrieve",
-            {"doc_ids": doc_ids, "max_tokens": max_tokens},
-        )
-
-    async def semantic_search(
-        self,
-        query: str,
-        top_k: int = 5,
-        collection: str = "default",
-    ) -> list[dict[str, Any]]:
-        """
-        Vector similarity search.
-
-        Output: list of {content, score, metadata}
-        """
-        return await self._post(
-            "/semantic-search",
-            {"query": query, "top_k": top_k, "collection": collection},
-            cache_key=f"sem:{query}:{top_k}:{collection}",
-        )
-
-    async def get_template(self, template_name: str) -> str:
-        """
-        Retrieve a document template from the knowledge base.
-
-        Output: template content as string
-        """
-        result = await self._post(
-            "/templates",
-            {"name": template_name},
-            cache_key=f"tpl:{template_name}",
-        )
-        return result.get("content", "") if isinstance(result, dict) else ""
-
-    async def get_regulations(self, domain: str) -> list[dict[str, Any]]:
-        """
-        Retrieve applicable regulations for a domain.
-
-        Output: list of {code, title, description, url}
-        """
-        return await self._post(
-            "/regulations",
-            {"domain": domain},
-            cache_key=f"reg:{domain}",
-        )
-
-    async def health_check(self) -> bool:
-        """Returns True if MCP server is reachable."""
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
-                resp = await client.get(f"{self._base_url}/health", headers=self._headers)
-                return resp.status_code == 200
-        except Exception:
-            return False
-
-    # ── Internal helpers ──────────────────────────────────────────────────────
-
-    async def _post(
-        self,
-        path: str,
-        payload: dict[str, Any],
+        tool_name: str,
+        arguments: dict[str, Any],
         cache_key: str | None = None,
     ) -> Any:
-        # Cache hit
+        """Call an MCP tool with caching and logging."""
         if cache_key:
             if cached := self._get_cache(cache_key):
-                log.debug("mcp_cache_hit", path=path, key=cache_key)
+                log.debug("mcp_cache_hit", tool=tool_name, key=cache_key)
                 return cached
 
-        last_exc: Exception | None = None
-        for attempt in range(1, self._max_retries + 1):
-            try:
-                start = time.monotonic()
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    resp = await client.post(
-                        f"{self._base_url}{path}",
-                        json=payload,
-                        headers=self._headers,
-                    )
-                duration_ms = int((time.monotonic() - start) * 1000)
+        client = await self._ensure_connected()
+        start = time.monotonic()
 
-                if resp.status_code == 200:
-                    data = resp.json()
-                    result = data.get("results", data)
-                    if cache_key:
-                        self._set_cache(cache_key, result)
-                    log.info(
-                        "mcp_request_ok",
-                        path=path,
-                        attempt=attempt,
-                        duration_ms=duration_ms,
-                    )
-                    return result
+        try:
+            result = await client.call_tool(tool_name, arguments)
+        except Exception as exc:
+            log.error("mcp_call_failed", tool=tool_name, error=str(exc))
+            raise MCPError(f"Tool '{tool_name}' failed: {exc}") from exc
 
-                log.warning(
-                    "mcp_request_error",
-                    path=path,
-                    status=resp.status_code,
-                    attempt=attempt,
-                )
-                last_exc = MCPError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+        duration_ms = int((time.monotonic() - start) * 1000)
+        log.info("mcp_call_ok", tool=tool_name, duration_ms=duration_ms)
 
-            except httpx.TimeoutException as exc:
-                log.warning("mcp_timeout", path=path, attempt=attempt)
-                last_exc = exc
-            except Exception as exc:
-                log.error("mcp_unexpected_error", path=path, attempt=attempt, error=str(exc))
-                last_exc = exc
+        # Extract content from CallToolResult
+        data = self._extract_result(result)
 
-            if attempt < self._max_retries:
-                backoff = 2 ** attempt
-                await asyncio.sleep(backoff)
+        if cache_key:
+            self._set_cache(cache_key, data)
+        return data
 
-        raise MCPError(f"MCP call to {path} failed after {self._max_retries} attempts: {last_exc}")
+    @staticmethod
+    def _extract_result(result: Any) -> Any:
+        """Extract the first text content from a CallToolResult."""
+        # fastmcp CallToolResult has .content (list of content blocks)
+        if hasattr(result, "content"):
+            for block in result.content:
+                if hasattr(block, "text"):
+                    import json
+
+                    text = block.text
+                    try:
+                        return json.loads(text)
+                    except (json.JSONDecodeError, TypeError):
+                        return text
+        # Fallback: result might already be a plain value
+        if isinstance(result, dict):
+            return result
+        return result
 
     def _get_cache(self, key: str) -> Any | None:
         entry = self._cache.get(key)
@@ -213,3 +275,4 @@ class MCPClient:
 
     def _set_cache(self, key: str, value: Any) -> None:
         self._cache[key] = (value, time.monotonic())
+

@@ -1,21 +1,4 @@
-x-backend-env: &backend-env
-  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/ai_docs
-  REDIS_URL: redis://redis:6379/0
-  SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production-min32c}
-  JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production-min32c}
-  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-  DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-gpt-4o}
-  MCP_SERVER_URL: ${MCP_SERVER_URL:-http://host.docker.internal:8001}
-  MCP_API_KEY: ${MCP_API_KEY:-}
-  APP_ENV: ${APP_ENV:-development}
-  DEBUG: ${DEBUG:-false}
-  LOG_LEVEL: ${LOG_LEVEL:-INFO}
-  DOCUMENTS_BASE_PATH: /app/documents
-  TEMPLATES_BASE_PATH: /app/app/templates
-
 services:
-
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -58,18 +41,31 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # Load runtime env from backend/.env (developer) so containers receive AI keys, etc.
+    # Load runtime env from .env (project root)
     env_file:
-      - ./backend/.env
+      - ./.env
     environment:
-      <<: *backend-env
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/ai_docs
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production-min32c}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production-min32c}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-}
+      MCP_SERVER_URL: ${MCP_SERVER_URL:-http://host.docker.internal:8001}
+      MCP_API_KEY: ${MCP_API_KEY:-}
+      APP_ENV: ${APP_ENV:-development}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DOCUMENTS_BASE_PATH: /app/documents
+      TEMPLATES_BASE_PATH: /app/app/templates
     volumes:
       - documents_data:/app/documents
       - ./backend/app:/app/app:ro
     ports:
-      - "8000:8000"
+      - "8001:8001"
     healthcheck:
-      test: ["CMD-SHELL","python -c \"import httpx; httpx.get('http://localhost:8000/health').raise_for_status()\""]
+      test: ["CMD-SHELL","python -c \"import httpx; httpx.get('http://localhost:8001/health').raise_for_status()\""]
       interval: 30s
       timeout: 10s
       start_period: 20s
@@ -77,13 +73,13 @@ services:
 
   frontend:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "3000:80"
+      - "3001:80"
 
   pgadmin:
     image: dpage/pgadmin4:latest

@@ -54,7 +54,7 @@ class OrchestratorAgent:
         self._agno = Agent(
             name="orchestrator",
             role="Workflow Orchestrator",
-            goal="Ensure document generation workflow completes successfully",
+            description="Ensure document generation workflow completes successfully",
             instructions=[
                 "Coordinate a multi-agent workflow for IT document generation.",
                 "Validate each step output is complete before proceeding.",

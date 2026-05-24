@@ -20,6 +20,7 @@ sys.modules["structlog"] = structlog_mod
 import os
 os.environ["SECRET_KEY"] = "s" * 32
 os.environ["JWT_SECRET_KEY"] = "j" * 32
+os.environ["DEFAULT_AI_PROVIDER"] = "openai"
 
 # Insert a lightweight stub for app.db.session to avoid creating real DB engine at import time
 db_session_stub = ModuleType("app.db.session")
@@ -132,9 +133,12 @@ sys.modules["agno.models.openai"] = agno_openai_module
 
 mcp_module = ModuleType("app.mcp.client.mcp_client")
 class _MCPClient:
-    async def search_documents(self, query: str, limit: int = 5):
+    async def search_documents(self, query: str, limit: int = 5, filters: dict | None = None):
         return []
+    async def chat(self, message: str, kb_id: str | None = None, top_k: int = 6):
+        return {"answer": "", "sources": [], "search_query": ""}
 mcp_module.MCPClient = _MCPClient
+mcp_module.MCPError = type("MCPError", (Exception,), {})
 sys.modules["app.mcp.client.mcp_client"] = mcp_module
 
 from app.main import app

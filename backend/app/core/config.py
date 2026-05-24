@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -52,10 +52,11 @@ class Settings(BaseSettings):
     default_ai_provider: Literal["openai", "anthropic", "openrouter", "ollama"] = "openai"
 
     # ── MCP / RAG ─────────────────────────────────────────────────────────────
-    mcp_server_url: str = "http://localhost:8001"
+    mcp_server_url: str = "http://localhost:8001/sse"
     mcp_api_key: str = ""
     mcp_timeout_seconds: int = 30
     mcp_max_retries: int = 3
+    mcp_default_kb_id: str = "default"
 
     # ── Workflow ──────────────────────────────────────────────────────────────
     workflow_max_retries: int = 3

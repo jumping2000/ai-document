@@ -42,7 +42,7 @@ class QualityAgent:
         self._agno = Agent(
             name="quality_reviewer",
             role="Senior IT Document Quality Reviewer",
-            goal="Ensure documents meet professional procurement standards",
+            description="Ensure documents meet professional procurement standards",
             instructions=[
                 "Check every item in the quality checklist.",
                 "Score each section from 0.0 to 1.0.",

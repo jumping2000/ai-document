@@ -37,7 +37,7 @@ class LeadWriterAgent:
         self._agno = Agent(
             name="lead_writer",
             role="Senior Technical Writer",
-            goal="Produce complete, professional IT procurement documents",
+            description="Produce complete, professional IT procurement documents",
             instructions=[
                 "Write in clear, formal Italian or English as specified.",
                 "Follow the document template structure strictly.",

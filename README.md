@@ -64,7 +64,7 @@ INIT → BRIEFING → ENRICHMENT → VALIDATION → WRITING → QUALITY_ANALYSIS
 ### 1. Configure
 
 ```bash
-cp backend/.env.example backend/.env
+cp .env.example .env
 # Set OPENAI_API_KEY at minimum
 ```
 
@@ -83,7 +83,7 @@ docker compose --profile dev up --build
 | Service          | URL                          |
 |------------------|------------------------------|
 | Frontend         | http://localhost:3000        |
-| API Docs         | http://localhost:8000/api/docs |
+| API Docs         | http://localhost:8001/api/docs |
 | pgAdmin (dev)    | http://localhost:5050        |
 | Redis (dev)      | http://localhost:8081        |
 
@@ -97,9 +97,9 @@ docker compose --profile dev up --build
 cd backend
 pip install uv
 uv pip install -e ".[dev]"
-cp .env.example .env
+cp ../.env.example ../.env
 alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8001
 ```
 
 ### Frontend
@@ -161,22 +161,12 @@ WORKFLOW_MAX_RETRIES=3             # Retry budget per loop
 
 ### Env file placement and Docker Compose
 
-- Docker Compose variable substitution reads a `.env` file located next to `docker-compose.yml` (project root). This `.env` is used for compose interpolation like `${POSTGRES_PASSWORD}`.
-- The `backend` container also loads runtime environment variables from `backend/.env` via `env_file:` (see `docker-compose.yml`). This is the recommended place to keep service-specific secrets for local development.
-- Recommendation:
-        - Keep a project-level `.env` for compose-level values (copy from `./.env.example`).
-        - Keep `backend/.env` for backend runtime secrets (copy from `backend/.env.example`).
-        - Do NOT commit `.env` files. Use CI/CD secrets for production values.
-
-Copy examples:
-
+- The single `.env` file in the project root serves both Docker Compose variable substitution (e.g. `${POSTGRES_PASSWORD}`) and backend runtime configuration (loaded via `env_file:` in `docker-compose.yml` and by Pydantic Settings locally).
+- Copy from `.env.example`:
 ```bash
-# Project-level .env
 cp .env.example .env
-
-# Backend runtime .env
-cp backend/.env.example backend/.env
 ```
+- Do NOT commit `.env`. Use CI/CD secrets for production.
 
 To run with the optional development services (Ollama, pgAdmin, Redis Commander):
 
@@ -186,7 +176,7 @@ docker compose --profile dev up --build
 
 ### LLM Providers (examples)
 
-You can select the LLM provider via `DEFAULT_AI_PROVIDER` and the model via `DEFAULT_AI_MODEL` in `backend/.env`.
+You can select the LLM provider via `DEFAULT_AI_PROVIDER` and the model via `DEFAULT_AI_MODEL` in `.env`.
 
 - OpenAI (cloud)
 
@@ -238,7 +228,7 @@ curl -fsS $OLLAMA_URL/health && echo "Ollama OK" || echo "Ollama not responding"
 ```
 
 Notes:
-- Use `backend/.env` for backend runtime configuration (copy from `backend/.env.example`).
+- Use `.env` in the project root for all configuration (copy from `.env.example`).
 - For production, set provider keys in your CI/CD secret store rather than committing `.env` files.
 
 

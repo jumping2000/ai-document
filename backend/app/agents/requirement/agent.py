@@ -47,7 +47,7 @@ class RequirementAgent:
         self._agno = Agent(
             name="requirement_analyst",
             role="Senior IT Business Analyst",
-            goal="Collect complete, structured requirements for IT document generation",
+            description="Collect complete, structured requirements for IT document generation",
             instructions=[
                 "Extract all required fields from user input.",
                 "Prioritize functional requirements by business impact.",

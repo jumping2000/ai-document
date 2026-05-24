@@ -127,6 +127,6 @@ DEFAULT_AI_PROVIDER=ollama
 Se vuoi, applico i cambiamenti base automaticamente:
 - creo `app/core/llm.py` (factory) e `app/core/llm_adapters.py` con adapter minimal (HTTP clients),
 - aggiorno `app/core/config.py` per aggiungere le nuove variabili,
-- aggiorno `backend/.env.example` e `docker-compose.yml` (se richiesto).
+- aggiorno `.env.example` e `docker-compose.yml` (se richiesto).
 
 Dimmi se procedo con l'implementazione automatica.

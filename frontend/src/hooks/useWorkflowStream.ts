@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { AgentName, WorkflowEvent } from '../types';
 import { useWorkflowStore } from '../stores/workflowStore';
 
-const WS_BASE = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000';
+const WS_BASE = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8001';
 
 export function useWorkflowStream(workflowId: string | null) {
   const wsRef = useRef<WebSocket | null>(null);

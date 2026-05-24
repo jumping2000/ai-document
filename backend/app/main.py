@@ -42,7 +42,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://localhost:3001",   # production frontend (standalone)
+        "http://localhost",        # Docker behind nginx (port 80)
+        "http://127.0.0.1",        # Docker behind nginx (alternate)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,7 +69,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=8001,
         reload=settings.debug,
         log_config=None,  # handled by structlog
     )
