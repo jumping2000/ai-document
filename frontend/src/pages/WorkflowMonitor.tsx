@@ -9,6 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useWorkflowStore } from '../stores/workflowStore';
 import { useWorkflowStream } from '../hooks/useWorkflowStream';
+import ThemeSwitcher from '../components/ThemeSwitcher';
 import type { AgentName, DocumentType, WorkflowStateEnum } from '../types';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ function StateRail({ current }: { current: string }) {
                   transition-all duration-500
                   ${done ? 'bg-indigo-500 border-indigo-500 text-white' : ''}
                   ${active && !failed ? 'bg-indigo-500/20 border-indigo-400 text-indigo-300' : ''}
-                  ${!done && !active ? 'bg-zinc-800 border-zinc-700 text-zinc-600' : ''}
+                  ${!done && !active ? 'bg-zinc-200 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-400 dark:text-zinc-600' : ''}
                   ${failed && active ? 'bg-red-500/20 border-red-500 text-red-400' : ''}
                 `}
               >
@@ -115,8 +116,8 @@ function AgentCard({ name, status, duration_ms }: {
       transition={{ repeat: Infinity, duration: 1.5 }}
       className={`
         relative p-3 rounded-xl border transition-all duration-300
-        ${isRunning ? 'bg-zinc-800/80' : 'bg-zinc-900/50'}
-        ${isDone ? 'border-zinc-700' : isRunning ? '' : 'border-zinc-800'}
+        ${isRunning ? 'bg-zinc-100 dark:bg-zinc-800/80' : 'bg-zinc-50 dark:bg-zinc-900/50'}
+        ${isDone ? 'border-zinc-300 dark:border-zinc-700' : isRunning ? '' : 'border-zinc-200 dark:border-zinc-800'}
       `}
       style={{ borderColor: isRunning ? meta.color : undefined }}
     >
@@ -128,10 +129,10 @@ function AgentCard({ name, status, duration_ms }: {
           <Icon size={15} style={{ color: meta.color }} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className={`text-xs font-semibold ${isRunning ? 'text-white' : 'text-zinc-400'}`}>
+          <div className={`text-xs font-semibold ${isRunning ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 dark:text-zinc-400'}`}>
             {meta.label}
           </div>
-          <div className="text-[10px] text-zinc-600 mt-0.5">
+          <div className="text-[10px] text-zinc-500 dark:text-zinc-600 mt-0.5">
             {isRunning && (
               <span style={{ color: meta.color }} className="flex items-center gap-1">
                 <motion.span
@@ -230,23 +231,23 @@ export default function WorkflowMonitorPage() {
   const isCompleted = currentState === 'COMPLETED';
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-mono">
+    <div className="min-h-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white font-mono">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
             <FileText size={16} />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-widest uppercase text-white">
+            <h1 className="text-sm font-bold tracking-widest uppercase text-zinc-900 dark:text-white">
               AI Document Platform
             </h1>
-            <p className="text-[10px] text-zinc-500 tracking-wider">
+            <p className="text-[10px] text-zinc-400 dark:text-zinc-500 tracking-wider">
               Enterprise Document Generator
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {isStreaming && (
             <motion.div
               animate={{ opacity: [1, 0.4, 1] }}
@@ -258,15 +259,16 @@ export default function WorkflowMonitorPage() {
             </motion.div>
           )}
           {activeWorkflowId && (
-            <span className="text-[10px] text-zinc-600 font-mono">
+            <span className="text-[10px] text-zinc-400 dark:text-zinc-600 font-mono">
               {activeWorkflowId.slice(0, 8)}…
             </span>
           )}
+          <ThemeSwitcher />
         </div>
       </header>
 
       {/* ── Nav tabs ───────────────────────────────────────────────────────── */}
-      <nav className="border-b border-zinc-800 px-6 flex gap-0">
+      <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 flex gap-0">
         {(['form', 'monitor', 'document'] as const).map((tab) => (
           <button
             key={tab}
@@ -275,8 +277,8 @@ export default function WorkflowMonitorPage() {
               px-5 py-3 text-[11px] font-semibold uppercase tracking-widest border-b-2
               transition-colors duration-200
               ${view === tab
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-zinc-600 hover:text-zinc-400'}
+                ? 'border-indigo-500 text-indigo-500 dark:text-indigo-400'
+                : 'border-transparent text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400'}
             `}
           >
             {tab === 'form' ? 'Nuovo' : tab === 'monitor' ? 'Monitor' : 'Documento'}
@@ -297,10 +299,10 @@ export default function WorkflowMonitorPage() {
               className="max-w-2xl mx-auto"
             >
               <div className="mb-8">
-                <h2 className="text-2xl font-black tracking-tight text-white">
+                <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-white">
                   Nuovo Documento
                 </h2>
-                <p className="text-zinc-500 text-sm mt-1">
+                <p className="text-zinc-500 dark:text-zinc-500 text-sm mt-1">
                   Avvia la generazione automatica tramite workflow multi-agente
                 </p>
               </div>
@@ -308,7 +310,7 @@ export default function WorkflowMonitorPage() {
               <div className="space-y-5">
                 {/* Document type selector */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-2">
                     Tipo Documento
                   </label>
                   <div className="grid grid-cols-2 gap-3">
@@ -319,8 +321,8 @@ export default function WorkflowMonitorPage() {
                         className={`
                           p-4 rounded-xl border text-left transition-all duration-200
                           ${formData.document_type === t
-                            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300'
-                            : 'border-zinc-800 bg-zinc-900 text-zinc-500 hover:border-zinc-700'}
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300'
+                            : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}
                         `}
                       >
                         <div className="text-sm font-bold mb-1">
@@ -338,22 +340,22 @@ export default function WorkflowMonitorPage() {
 
                 {/* Title */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-2">
                     Titolo Progetto
                   </label>
                   <input
                     value={formData.title}
                     onChange={e => setFormData(p => ({ ...p, title: e.target.value }))}
                     placeholder="es. Sistema ERP Cloud per PA"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3
-                               text-sm text-white placeholder-zinc-700
+                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3
+                               text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-700
                                focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                 </div>
 
                 {/* Description */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-2">
                     Descrizione Requisiti
                   </label>
                   <textarea
@@ -361,8 +363,8 @@ export default function WorkflowMonitorPage() {
                     onChange={e => setFormData(p => ({ ...p, raw_description: e.target.value }))}
                     placeholder="Descrivi il progetto IT, gli obiettivi, i requisiti principali, le integrazioni necessarie, i vincoli di sicurezza e compliance…"
                     rows={6}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3
-                               text-sm text-white placeholder-zinc-700 resize-none
+                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3
+                               text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-700 resize-none
                                focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                 </div>
@@ -393,16 +395,16 @@ export default function WorkflowMonitorPage() {
               className="space-y-6"
             >
               {/* State rail */}
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+              <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500">
                     Stato Workflow
                   </h3>
                   <span className={`
                     text-xs font-bold px-3 py-1 rounded-full
-                    ${isCompleted ? 'bg-emerald-500/10 text-emerald-400' :
-                      isFailed ? 'bg-red-500/10 text-red-400' :
-                      'bg-indigo-500/10 text-indigo-400'}
+                    ${isCompleted ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                      isFailed ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
+                      'bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'}
                   `}>
                     {STATE_LABELS[currentState] ?? currentState}
                   </span>
@@ -412,8 +414,8 @@ export default function WorkflowMonitorPage() {
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Agent grid */}
-                <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4">
+                <div className="lg:col-span-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-4">
                     Agenti AI
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -431,8 +433,8 @@ export default function WorkflowMonitorPage() {
                 {/* Quality + events */}
                 <div className="space-y-4">
                   {qualityReport && (
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4">
+                    <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5">
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-4">
                         Quality Score
                       </h3>
                       <QualityGauge
@@ -445,9 +447,9 @@ export default function WorkflowMonitorPage() {
                             <div
                               key={issue.id}
                               className={`text-[10px] p-2 rounded-lg ${
-                                issue.severity === 'CRITICAL' ? 'bg-red-500/10 text-red-400' :
-                                issue.severity === 'MAJOR' ? 'bg-orange-500/10 text-orange-400' :
-                                'bg-zinc-800 text-zinc-500'
+                                issue.severity === 'CRITICAL' ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
+                                issue.severity === 'MAJOR' ? 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400' :
+                                'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500'
                               }`}
                             >
                               <span className="font-bold">{issue.id}</span> {issue.description}
@@ -459,32 +461,32 @@ export default function WorkflowMonitorPage() {
                   )}
 
                   {/* Event log */}
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-3">
+                  <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-3">
                       Event Log
                     </h3>
                     <div className="space-y-1 max-h-48 overflow-y-auto">
                       {events.slice(-20).reverse().map((ev, i) => (
                         <div key={i} className="flex items-center gap-2 text-[10px]">
-                          <span className="text-zinc-700 w-16 flex-shrink-0 font-mono">
+                          <span className="text-zinc-400 dark:text-zinc-700 w-16 flex-shrink-0 font-mono">
                             {new Date().toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </span>
                           <span className={`
                             px-1.5 py-0.5 rounded text-[9px] font-bold flex-shrink-0
-                            ${ev.event === 'completed' ? 'bg-emerald-500/20 text-emerald-400' :
-                              ev.event === 'failed' ? 'bg-red-500/20 text-red-400' :
-                              ev.event === 'state_change' ? 'bg-indigo-500/20 text-indigo-400' :
-                              'bg-zinc-800 text-zinc-500'}
+                            ${ev.event === 'completed' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+                              ev.event === 'failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400' :
+                              ev.event === 'state_change' ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' :
+                              'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500'}
                           `}>
                             {ev.event}
                           </span>
-                          <span className="text-zinc-600 truncate">
+                          <span className="text-zinc-500 dark:text-zinc-600 truncate">
                             {JSON.stringify(ev.data).slice(0, 40)}
                           </span>
                         </div>
                       ))}
                       {events.length === 0 && (
-                        <p className="text-zinc-700 text-[10px]">Nessun evento ancora…</p>
+                        <p className="text-zinc-400 dark:text-zinc-700 text-[10px]">Nessun evento ancora…</p>
                       )}
                     </div>
                   </div>
@@ -530,29 +532,29 @@ export default function WorkflowMonitorPage() {
               exit={{ opacity: 0, y: -16 }}
             >
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-black tracking-tight">Documento Generato</h2>
+                <h2 className="text-lg font-black tracking-tight text-zinc-900 dark:text-white">Documento Generato</h2>
                 <div className="flex gap-2">
-                  <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-700
-                                     text-xs font-bold text-white rounded-xl transition-colors">
+                  <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700
+                                     text-xs font-bold text-zinc-700 dark:text-white rounded-xl transition-colors">
                     <Download size={12} />
                     DOCX
                   </button>
-                  <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-700
-                                     text-xs font-bold text-white rounded-xl transition-colors">
+                  <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700
+                                     text-xs font-bold text-zinc-700 dark:text-white rounded-xl transition-colors">
                     <Download size={12} />
                     PDF
                   </button>
                 </div>
               </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8">
+              <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8">
                 {docPreview ? (
-                  <div className="prose prose-invert prose-sm max-w-none">
+                  <div className="prose dark:prose-invert prose-sm max-w-none">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {docPreview}
                     </ReactMarkdown>
                   </div>
                 ) : (
-                  <div className="text-center py-16 text-zinc-600">
+                  <div className="text-center py-16 text-zinc-400 dark:text-zinc-600">
                     <FileText size={32} className="mx-auto mb-3 opacity-30" />
                     <p className="text-sm">Nessun documento disponibile.</p>
                     <p className="text-xs mt-1">Completa un workflow per generare un documento.</p>

@@ -89,6 +89,41 @@ docker compose --profile dev up --build
 
 ---
 
+## Nginx Basic Authentication
+
+The frontend is protected with HTTP Basic Authentication via Nginx.
+
+### Setup
+
+1. Create or update the `.htpasswd` file in the `nginx/` directory:
+
+```bash
+# Using openssl (Linux/macOS)
+echo "admin:$(openssl passwd -apr1 'your-password')" > nginx/.htpasswd
+
+# Or using htpasswd (if available)
+htpasswd -B nginx/.htpasswd admin
+```
+
+2. Default credentials (for development only):
+   - Username: `admin`
+   - Password: `admin`
+
+3. The `.htpasswd` file is mounted read-only into the Nginx container.
+
+### Custom Users
+
+To add multiple users, append lines to `.htpasswd`:
+
+```
+admin:$apr1$...
+user2:$apr1$...
+```
+
+**Note:** The `.htpasswd` file is excluded from git (see `.gitignore`).
+
+---
+
 ## Local Development
 
 ### Backend

@@ -51,6 +51,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production-min32c}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-}
       MCP_SERVER_URL: ${MCP_SERVER_URL:-http://host.docker.internal:8001}
       MCP_API_KEY: ${MCP_API_KEY:-}
@@ -78,6 +79,8 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    volumes:
+      - ./nginx/.htpasswd:/etc/nginx/custom/.htpasswd:ro
     ports:
       - "3001:80"
 

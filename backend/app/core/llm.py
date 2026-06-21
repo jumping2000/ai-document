@@ -29,7 +29,7 @@ def get_model_adapter() -> Any:
         try:
             from agno.models.openrouter.openrouter import OpenRouter
 
-            return OpenRouter(id=settings.default_ai_model, api_key=settings.openrouter_api_key, base_url=settings.openrouter_base_url)
+            return OpenRouter(id=settings.default_ai_model, api_key=settings.openrouter_api_key)
         except Exception as exc:  # pragma: no cover
             raise ImportError("OpenRouter model support is not available: " + str(exc))
 

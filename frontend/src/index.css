@@ -9,19 +9,49 @@
   --color-brand-dim: rgba(99,102,241,0.15);
 }
 
+/* Light theme (default) */
+:root, html.light {
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f4f4f5;
+  --color-bg-tertiary: #e4e4e7;
+  --color-text: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted: #a1a1aa;
+  --color-border: #e4e4e7;
+  --color-border-hover: #d4d4d8;
+  --color-scrollbar: #d4d4d8;
+  --color-scrollbar-hover: #a1a1aa;
+}
+
+/* Dark theme */
+html.dark {
+  --color-bg: #09090b;
+  --color-bg-secondary: #18181b;
+  --color-bg-tertiary: #27272a;
+  --color-text: #fafafa;
+  --color-text-secondary: #d4d4d8;
+  --color-text-muted: #71717a;
+  --color-border: #27272a;
+  --color-border-hover: #3f3f46;
+  --color-scrollbar: #3f3f46;
+  --color-scrollbar-hover: #52525b;
+}
+
 html, body {
-  background-color: #09090b;
-  color: #fafafa;
+  background-color: var(--color-bg);
+  color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #52525b; }
+::-webkit-scrollbar-thumb { background: var(--color-scrollbar); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-scrollbar-hover); }
 
-.prose-invert {
+/* Prose inverted for dark mode */
+html.dark .prose-invert {
   --tw-prose-body: #d4d4d8;
   --tw-prose-headings: #fafafa;
   --tw-prose-links: #818cf8;
@@ -34,8 +64,22 @@ html, body {
   --tw-prose-td-borders: #27272a;
 }
 
+/* Prose for light mode */
+html.light .prose {
+  --tw-prose-body: #3f3f46;
+  --tw-prose-headings: #18181b;
+  --tw-prose-links: #6366f1;
+  --tw-prose-bold: #18181b;
+  --tw-prose-bullets: #a1a1aa;
+  --tw-prose-hr: #e4e4e7;
+  --tw-prose-code: #7c3aed;
+  --tw-prose-pre-bg: #f4f4f5;
+  --tw-prose-th-borders: #d4d4d8;
+  --tw-prose-td-borders: #e4e4e7;
+}
+
 .prose th {
-  background-color: #18181b;
+  background-color: var(--color-bg-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 0.7rem;

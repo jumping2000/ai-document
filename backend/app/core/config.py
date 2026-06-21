@@ -43,7 +43,6 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     # OpenRouter
     openrouter_api_key: str = ""
-    openrouter_base_url: str = "https://api.openrouter.ai"
     # Ollama (on-prem or cloud)
     ollama_url: str = "http://localhost:11434"
     ollama_api_key: str = ""
@@ -52,7 +51,7 @@ class Settings(BaseSettings):
     default_ai_provider: Literal["openai", "anthropic", "openrouter", "ollama"] = "openai"
 
     # ── MCP / RAG ─────────────────────────────────────────────────────────────
-    mcp_server_url: str = "http://localhost:8001/sse"
+    mcp_server_url: str = "http://localhost:8100/sse"
     mcp_api_key: str = ""
     mcp_timeout_seconds: int = 30
     mcp_max_retries: int = 3
