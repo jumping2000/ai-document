@@ -21,7 +21,8 @@ from typing import Any
 
 import structlog
 
-from app.mcp.client.mcp_client import MCPClient, MCPError
+from app.mcp.client.adapters.nanorag import NanoRAGAdapter
+from app.mcp.client.mcp_client import MCPError
 
 log = structlog.get_logger(__name__)
 
@@ -42,14 +43,19 @@ class RetrievalSkill:
     Failure:  returns RetrievedContext with empty context_text (agent proceeds without KB)
     """
 
-    def __init__(self) -> None:
-        self._mcp = MCPClient()
+    def __init__(
+        self,
+        mcp_url: str | None = None,
+        mcp_api_key: str | None = None,
+    ) -> None:
+        self._mcp = NanoRAGAdapter(url=mcp_url, api_key=mcp_api_key)
 
     async def build_context(
         self,
         requirements: dict[str, Any],
         document_type: str = "capitolato",
         max_docs: int = 8,
+        kb_id: str | None = None,
     ) -> RetrievedContext:
         """
         Build KB context from requirements.
@@ -60,10 +66,14 @@ class RetrievalSkill:
         queries = self._build_queries(requirements, document_type)
         log.info("retrieval_queries", count=len(queries), doc_type=document_type)
 
-        # Run all queries concurrently
-        search_tasks = [
-            self._safe_search(q, limit=3) for q in queries
-        ]
+        # Run queries with limited concurrency (NanoRAG processes LLM calls sequentially)
+        sem = asyncio.Semaphore(2)
+
+        async def _limited(query: str) -> list[dict[str, Any]]:
+            async with sem:
+                return await self._safe_search(query, limit=3, kb_id=kb_id)
+
+        search_tasks = [_limited(q) for q in queries]
         results_per_query = await asyncio.gather(*search_tasks)
 
         # Flatten + deduplicate
@@ -110,9 +120,7 @@ class RetrievalSkill:
         queries.append(f"template {document_type} IT procurement italiana")
 
         # Standards
-        standards = (
-            requirements.get("security_compliance", {}).get("standards", [])
-        )
+        standards = requirements.get("security_compliance", {}).get("standards", [])
         for std in standards[:3]:
             queries.append(f"requisiti compliance {std} IT")
 
@@ -130,9 +138,7 @@ class RetrievalSkill:
             queries.append("D.Lgs 36/2023 codice contratti pubblici digitale")
 
         # Security
-        data_class = (
-            requirements.get("security_compliance", {}).get("data_classification", "")
-        )
+        data_class = requirements.get("security_compliance", {}).get("data_classification", "")
         if data_class:
             queries.append(f"GDPR {data_class} data protection requirements IT")
 
@@ -145,10 +151,11 @@ class RetrievalSkill:
         self,
         query: str,
         limit: int = 3,
+        kb_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Wraps MCPClient.search_documents — returns [] on failure."""
         try:
-            return await self._mcp.search_documents(query, limit=limit)
+            return await self._mcp.search_documents(query, limit=limit, kb_id=kb_id)
         except MCPError as exc:
             log.warning("retrieval_mcp_error", query=query, error=str(exc))
             return []

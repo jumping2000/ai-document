@@ -1,23 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import uuid
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from httpx import AsyncClient
 from httpx._transports.asgi import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-
-import sys
-from types import ModuleType, SimpleNamespace
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Stub structlog early so importing app.main doesn't fail in test env
 structlog_mod = ModuleType("structlog")
-structlog_mod.get_logger = lambda _name=None: SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, error=lambda *a, **k: None)
+structlog_mod.get_logger = lambda _name=None: SimpleNamespace(
+    info=lambda *a, **k: None, debug=lambda *a, **k: None, error=lambda *a, **k: None
+)
 sys.modules["structlog"] = structlog_mod
 
 import os
+
 os.environ["SECRET_KEY"] = "s" * 32
 os.environ["JWT_SECRET_KEY"] = "j" * 32
 os.environ["DEFAULT_AI_PROVIDER"] = "openai"
@@ -25,58 +27,90 @@ os.environ["DEFAULT_AI_PROVIDER"] = "openai"
 # Insert a lightweight stub for app.db.session to avoid creating real DB engine at import time
 db_session_stub = ModuleType("app.db.session")
 db_session_stub.AsyncSessionLocal = None
+
+
 async def _dummy_get_db():
     if False:
         yield
     return
+
+
 db_session_stub.get_db = _dummy_get_db
 sys.modules["app.db.session"] = db_session_stub
 
 # Minimal stubs for heavy third-party libs used at import-time
 jinja2_module = ModuleType("jinja2")
+
+
 class _Template:
     def render(self, **_kwargs) -> str:
         return ""
+
+
 class _Environment:
     def __init__(self, *args, **kwargs) -> None:
         pass
+
     def get_template(self, _name: str) -> _Template:
         return _Template()
+
+
 class _FileSystemLoader:
     def __init__(self, *args, **kwargs) -> None:
         pass
+
+
 def _select_autoescape(_args):
     return False
+
+
 jinja2_module.Environment = _Environment
 jinja2_module.FileSystemLoader = _FileSystemLoader
 jinja2_module.select_autoescape = _select_autoescape
 sys.modules["jinja2"] = jinja2_module
 
 docx_module = ModuleType("docx")
+
+
 class _Document:
     def __init__(self, *args, **kwargs) -> None:
         self.styles = {}
         self.sections = []
+
     def add_heading(self, *args, **kwargs):
         return None
+
     def add_paragraph(self, *args, **kwargs):
         return SimpleNamespace(add_run=lambda *a, **k: SimpleNamespace())
+
     def save(self, *args, **kwargs) -> None:
         return None
+
+
 docx_module.Document = _Document
 sys.modules["docx"] = docx_module
 docx_enum_module = ModuleType("docx.enum")
 docx_enum_text_module = ModuleType("docx.enum.text")
 docx_shared_module = ModuleType("docx.shared")
+
+
 class _WDAlignParagraph:
     CENTER = "center"
+
+
 def _inches(value):
     return value
+
+
 def _pt(value):
     return value
+
+
 class _RGBColor:
     def __init__(self, *args, **kwargs) -> None:
         pass
+
+
 docx_enum_text_module.WD_ALIGN_PARAGRAPH = _WDAlignParagraph
 docx_shared_module.Inches = _inches
 docx_shared_module.Pt = _pt
@@ -97,9 +131,13 @@ reportlab_pagesizes_module.A4 = "A4"
 reportlab_styles_module.getSampleStyleSheet = lambda: {}
 reportlab_styles_module.ParagraphStyle = lambda *args, **kwargs: SimpleNamespace()
 reportlab_units_module.cm = 1
+
+
 class _Flowable:
     def __init__(self, *args, **kwargs) -> None:
         pass
+
+
 reportlab_platypus_module.HRFlowable = _Flowable
 reportlab_platypus_module.Paragraph = _Flowable
 reportlab_platypus_module.SimpleDocTemplate = _Flowable
@@ -117,34 +155,102 @@ sys.modules["reportlab.platypus"] = reportlab_platypus_module
 agno_module = ModuleType("agno")
 agno_agent_module = ModuleType("agno.agent")
 agno_openai_module = ModuleType("agno.models.openai")
+
+
 class _Agent:
     def __init__(self, *args, **kwargs) -> None:
         pass
+
     async def arun(self, _prompt: str):
         return SimpleNamespace(content="{}")
+
+
 class _OpenAIChat:
     def __init__(self, *args, **kwargs) -> None:
         pass
+
+
 agno_agent_module.Agent = _Agent
 agno_openai_module.OpenAIChat = _OpenAIChat
+
+# Stub all provider submodules so cross-imports inside agno don't crash
+agno_openrouter_module = ModuleType("agno.models.openrouter")
+agno_openrouter_submodule = ModuleType("agno.models.openrouter.openrouter")
+agno_openrouter_submodule.OpenRouter = type(
+    "OpenRouter", (), {"__init__": lambda self, *a, **k: None}
+)
+agno_openrouter_module.OpenRouter = agno_openrouter_submodule.OpenRouter
+agno_anthropic_module = ModuleType("agno.models.anthropic")
+agno_anthropic_claude_module = ModuleType("agno.models.anthropic.claude")
+agno_anthropic_claude_module.Claude = type("Claude", (), {"__init__": lambda self, *a, **k: None})
+agno_ollama_module = ModuleType("agno.models.ollama")
+agno_ollama_chat_module = ModuleType("agno.models.ollama.chat")
+agno_ollama_chat_module.Ollama = type("Ollama", (), {"__init__": lambda self, *a, **k: None})
+
 sys.modules["agno"] = agno_module
 sys.modules["agno.agent"] = agno_agent_module
 sys.modules["agno.models.openai"] = agno_openai_module
+sys.modules["agno.models.openrouter"] = agno_openrouter_module
+sys.modules["agno.models.openrouter.openrouter"] = agno_openrouter_submodule
+sys.modules["agno.models.anthropic"] = agno_anthropic_module
+sys.modules["agno.models.anthropic.claude"] = agno_anthropic_claude_module
+sys.modules["agno.models.ollama"] = agno_ollama_module
+sys.modules["agno.models.ollama.chat"] = agno_ollama_chat_module
 
 mcp_module = ModuleType("app.mcp.client.mcp_client")
+
+
 class _MCPClient:
-    async def search_documents(self, query: str, limit: int = 5, filters: dict | None = None):
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def search_documents(self, query: str, limit: int = 5, kb_id: str | None = None):
         return []
+
+    async def list_tools(self):
+        return []
+
+    async def call_tool(self, name: str, arguments: dict | None = None):
+        return None
+
     async def chat(self, message: str, kb_id: str | None = None, top_k: int = 6):
         return {"answer": "", "sources": [], "search_query": ""}
+
+
 mcp_module.MCPClient = _MCPClient
 mcp_module.MCPError = type("MCPError", (Exception,), {})
 sys.modules["app.mcp.client.mcp_client"] = mcp_module
 
-from app.main import app
-from app.db import models as db_models
+# Stub for NanoRAGAdapter (RetrievalSkill now imports from adapters.nanorag)
+adapters_module = ModuleType("app.mcp.client.adapters")
+adapters_nanorag_module = ModuleType("app.mcp.client.adapters.nanorag")
+
+
+class _NanoRAGAdapter:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def search_documents(self, query: str, limit: int = 5, kb_id: str | None = None):
+        return []
+
+    async def list_tools(self):
+        return []
+
+    async def call_tool(self, name: str, arguments: dict | None = None):
+        return None
+
+    async def chat(self, message: str, kb_id: str | None = None, top_k: int = 6):
+        return {"answer": "", "sources": [], "search_query": ""}
+
+
+adapters_nanorag_module.NanoRAGAdapter = _NanoRAGAdapter
+sys.modules["app.mcp.client.adapters"] = adapters_module
+sys.modules["app.mcp.client.adapters.nanorag"] = adapters_nanorag_module
+
 from app import db as db_module
 from app.api.routes import workflow as workflow_route
+from app.db import models as db_models
+from app.main import app
 
 
 @pytest.mark.asyncio
@@ -161,6 +267,24 @@ async def test_start_workflow_persists_row(monkeypatch) -> None:
     # Ensure the route module uses the test sessionmaker for background tasks
     monkeypatch.setattr(db_module.session, "AsyncSessionLocal", TestSessionLocal)
     monkeypatch.setattr(workflow_route, "AsyncSessionLocal", TestSessionLocal)
+
+    # Stub WorkflowRunner to avoid real LLM agent creation — just persist state
+    from app.workflows.state_machine.machine import WorkflowState
+
+    class _StubRunner:
+        def __init__(self, db):
+            self.db = db
+
+        async def run(self, workflow_id, document_type, initial_input):
+            from app.db.models import Workflow
+
+            async with TestSessionLocal() as s:
+                wf = await s.get(Workflow, uuid.UUID(workflow_id))
+                if wf:
+                    wf.state = WorkflowState.COMPLETED.value
+                    await s.commit()
+
+    monkeypatch.setattr(workflow_route, "WorkflowRunner", _StubRunner)
 
     # Override dependency get_db
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:

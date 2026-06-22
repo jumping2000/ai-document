@@ -25,22 +25,22 @@ class ValidationResult:
 # ── Mandatory field specs per document type ────────────────────────────────────
 
 _CAPITOLATO_REQUIRED = [
-    ("project.title",                 "Titolo progetto"),
-    ("project.organization",          "Organizzazione"),
-    ("scope.objectives",              "Obiettivi progetto"),
-    ("functional_requirements",       "Requisiti funzionali (≥3)"),
-    ("technical_requirements",        "Requisiti tecnici (≥1)"),
-    ("sla.availability",              "SLA disponibilità"),
+    ("project.title", "Titolo progetto"),
+    ("project.organization", "Organizzazione"),
+    ("scope.objectives", "Obiettivi progetto"),
+    ("functional_requirements", "Requisiti funzionali (≥3)"),
+    ("technical_requirements", "Requisiti tecnici (≥1)"),
+    ("sla.availability", "SLA disponibilità"),
     ("security_compliance.standards", "Standard sicurezza"),
-    ("timeline.go_live",              "Data go-live"),
+    ("timeline.go_live", "Data go-live"),
 ]
 
 _REQUISITI_REQUIRED = [
-    ("project.title",           "Titolo progetto"),
-    ("scope.objectives",        "Obiettivi"),
+    ("project.title", "Titolo progetto"),
+    ("scope.objectives", "Obiettivi"),
     ("functional_requirements", "Requisiti funzionali (≥3)"),
-    ("technical_requirements",  "Requisiti tecnici (≥1)"),
-    ("security_compliance",     "Requisiti sicurezza"),
+    ("technical_requirements", "Requisiti tecnici (≥1)"),
+    ("security_compliance", "Requisiti sicurezza"),
 ]
 
 
@@ -94,6 +94,26 @@ def validate_requirements_completeness(
     return result
 
 
+def _parse_duration_hours(value: str) -> float | None:
+    """Parse a duration string like '4h', '30m', '2h30m' into hours."""
+    import re
+
+    value = value.strip().lower()
+    hours = 0.0
+    m = re.search(r"(\d+(?:\.\d+)?)\s*h", value)
+    if m:
+        hours += float(m.group(1))
+    m = re.search(r"(\d+(?:\.\d+)?)\s*m(?:in)?", value)
+    if m:
+        hours += float(m.group(1)) / 60
+    if hours == 0.0:
+        try:
+            hours = float(value)
+        except ValueError:
+            return None
+    return hours
+
+
 def validate_sla_consistency(sla: dict[str, Any]) -> ValidationResult:
     """
     Validate SLA values are internally consistent.
@@ -114,11 +134,32 @@ def validate_sla_consistency(sla: dict[str, Any]) -> ValidationResult:
                     f"Disponibilità {availability} inferiore al minimo consigliato (95%)"
                 )
             if pct > 99.999:
-                result.issues.append(
-                    f"Disponibilità {availability} non realistica (max 99.999%)"
-                )
+                result.issues.append(f"Disponibilità {availability} non realistica (max 99.999%)")
         except ValueError:
             result.warnings.append(f"Valore disponibilità non parsabile: {availability!r}")
+
+    # RTO must be > RPO
+    rto_str = sla.get("rto", "")
+    rpo_str = sla.get("rpo", "")
+    if rto_str and rpo_str:
+        rto = _parse_duration_hours(str(rto_str))
+        rpo = _parse_duration_hours(str(rpo_str))
+        if rto is not None and rpo is not None:
+            if rto <= rpo:
+                result.issues.append(f"RTO ({rto_str}) deve essere maggiore di RPO ({rpo_str})")
+
+    # Response time must be a positive number
+    rt = sla.get("response_time", "")
+    if rt:
+        rt_hours = _parse_duration_hours(str(rt))
+        if rt_hours is None:
+            result.warnings.append(f"Tempo di risposta non parsabile: {rt!r}")
+        elif rt_hours <= 0:
+            result.issues.append("Tempo di risposta deve essere positivo")
+
+    # Set valid = False if any issues were found
+    if result.issues:
+        result.valid = False
 
     return result
 
@@ -133,25 +174,43 @@ def validate_document_sections(
     Input:  markdown content string
     Output: ValidationResult with missing_sections list
     """
+    import re as _re
+
     result = ValidationResult(valid=True)
 
     required_sections_cap = [
-        "Oggetto", "Requisiti Funzionali", "Requisiti Tecnici",
-        "Sicurezza", "SLA", "Integrazioni", "Piano", "Criteri",
+        "Oggetto",
+        "Requisiti Funzionali",
+        "Requisiti Tecnici",
+        "Sicurezza",
+        "SLA",
+        "Integrazioni",
+        "Piano",
+        "Criteri",
     ]
     required_sections_req = [
-        "Introduzione", "Requisiti Funzionali", "Requisiti Tecnici",
-        "Sicurezza", "Architettura", "Integrazione",
+        "Introduzione",
+        "Requisiti Funzionali",
+        "Requisiti Tecnici",
+        "Sicurezza",
+        "Architettura",
+        "Integrazione",
     ]
 
-    sections = (
-        required_sections_cap if document_type == "capitolato"
-        else required_sections_req
-    )
+    sections = required_sections_cap if document_type == "capitolato" else required_sections_req
 
-    content_lower = content.lower()
+    # Extract markdown headings for robust matching
+    headings = _re.findall(r"^#+\s+(.+)$", content, _re.MULTILINE)
+    headings_lower = [h.lower() for h in headings]
+
     for section in sections:
-        if section.lower() not in content_lower:
+        sec_lower = section.lower()
+        # Match if section keyword appears in any heading
+        found = any(sec_lower in h for h in headings_lower)
+        # Fallback: also match in body text (for inline sections)
+        if not found:
+            found = sec_lower in content.lower()
+        if not found:
             result.missing_fields.append(section)
             result.issues.append(f"Sezione mancante nel documento: '{section}'")
 
@@ -179,7 +238,7 @@ def detect_placeholder_content(content: str) -> list[str]:
         r"\[DA DEFINIRE\]",
         r"\[INSERIRE\]",
         r"SEZIONE DA COMPLETARE",
-        r"\.\.\.",           # trailing ellipsis
+        r"\.\.\.",  # trailing ellipsis
     ]
     found = []
     for pat in patterns:
@@ -224,8 +283,7 @@ def score_requirement_richness(requirements: dict[str, Any]) -> float:
 
     security = requirements.get("security_compliance", {})
     sec_score = (
-        len(security.get("standards", [])) / 3
-        + len(security.get("requirements", [])) / 5
+        len(security.get("standards", [])) / 3 + len(security.get("requirements", [])) / 5
     ) / 2
     score += min(sec_score, 1.0) * weights["security_detail"]
 

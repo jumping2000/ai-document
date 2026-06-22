@@ -3,28 +3,27 @@ Orchestrator Agent — controls the workflow state machine,
 coordinates all agents, manages retry loops and human-in-the-loop.
 """
 
-import json
-import re
 import time
+
 import structlog
 from agno.agent import Agent
-from app.core.llm import get_model_adapter
 
-from app.core.config import settings
+from app.core.json_extract import extract_json
+from app.core.llm import get_model_adapter
 from app.workflows.state_machine.machine import (
-    StateMachine, WorkflowContext, WorkflowState, WorkflowTrigger,
+    StateMachine,
+    WorkflowContext,
+    WorkflowState,
+    WorkflowTrigger,
 )
 
 log = structlog.get_logger(__name__)
 
 
 def _parse_json_response(content: str) -> dict:
-    match = re.search(r"\{.*\}", content, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group())
-        except json.JSONDecodeError:
-            pass
+    data = extract_json(content)
+    if data:
+        return data
     return {"complete": False, "missing": ["parse_error"], "reason": content}
 
 
@@ -41,10 +40,10 @@ class OrchestratorAgent:
         self.ctx = context
 
         # Lazy imports to avoid circular deps
-        from app.agents.requirement.agent import RequirementAgent
-        from app.agents.procurement.agent import ProcurementAgent
         from app.agents.lead_writer.agent import LeadWriterAgent
+        from app.agents.procurement.agent import ProcurementAgent
         from app.agents.quality.agent import QualityAgent
+        from app.agents.requirement.agent import RequirementAgent
 
         self.requirement_agent = RequirementAgent()
         self.procurement_agent = ProcurementAgent()
@@ -80,17 +79,26 @@ class OrchestratorAgent:
                 await self._emit("state_change", {"state": WorkflowState.FAILED, "error": str(exc)})
                 break
 
-        log.info("workflow.finished", workflow_id=self.ctx.workflow_id,
-                 final_state=self.ctx.state, quality_score=self.ctx.quality_score)
+        log.info(
+            "workflow.finished",
+            workflow_id=self.ctx.workflow_id,
+            final_state=self.ctx.state,
+            quality_score=self.ctx.quality_score,
+        )
         return self.ctx
 
     async def _step(self) -> None:
         match self.sm.current_state:
-            case WorkflowState.BRIEFING:      await self._run_briefing()
-            case WorkflowState.ENRICHMENT:    await self._run_enrichment()
-            case WorkflowState.VALIDATION:    await self._run_validation()
-            case WorkflowState.WRITING:       await self._run_writing()
-            case WorkflowState.QUALITY_ANALYSIS: await self._run_quality()
+            case WorkflowState.BRIEFING:
+                await self._run_briefing()
+            case WorkflowState.ENRICHMENT:
+                await self._run_enrichment()
+            case WorkflowState.VALIDATION:
+                await self._run_validation()
+            case WorkflowState.WRITING:
+                await self._run_writing()
+            case WorkflowState.QUALITY_ANALYSIS:
+                await self._run_quality()
             case _:
                 self.sm.trigger(WorkflowTrigger.ERROR)
 
@@ -103,11 +111,14 @@ class OrchestratorAgent:
             existing=self.ctx.requirements,
         )
         self.ctx.requirements = result.requirements
-        await self._emit("agent_done", {
-            "agent": "requirement",
-            "duration_ms": int((time.monotonic() - t0) * 1000),
-            "summary": result.summary,
-        })
+        await self._emit(
+            "agent_done",
+            {
+                "agent": "requirement",
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+                "summary": result.summary,
+            },
+        )
         self.sm.trigger(WorkflowTrigger.REQUIREMENTS_COLLECTED)
         await self._emit("state_change", {"state": WorkflowState.ENRICHMENT})
 
@@ -120,11 +131,14 @@ class OrchestratorAgent:
         )
         self.ctx.enriched_requirements = result.enriched
         self.ctx.enrichment_retries += 1
-        await self._emit("agent_done", {
-            "agent": "procurement",
-            "duration_ms": int((time.monotonic() - t0) * 1000),
-            "sources_count": len(result.sources),
-        })
+        await self._emit(
+            "agent_done",
+            {
+                "agent": "procurement",
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+                "sources_count": len(result.sources),
+            },
+        )
         self.sm.trigger(WorkflowTrigger.ENRICHMENT_DONE)
         await self._emit("state_change", {"state": WorkflowState.VALIDATION})
 
@@ -132,7 +146,7 @@ class OrchestratorAgent:
         await self._emit("agent_start", {"agent": "orchestrator/validation"})
         prompt = (
             f"Validate enriched requirements for a '{self.ctx.document_type}' document. "
-            f"Return JSON: {{\"complete\": bool, \"missing\": [str], \"reason\": str}}\n\n"
+            f'Return JSON: {{"complete": bool, "missing": [str], "reason": str}}\n\n'
             f"Requirements: {self.ctx.enriched_requirements}"
         )
         response = await self._agno.arun(prompt)
@@ -144,10 +158,13 @@ class OrchestratorAgent:
         else:
             self.ctx.briefing_retries += 1
             self.sm.trigger(WorkflowTrigger.VALIDATION_FAILED)
-            await self._emit("validation_failed", {
-                "missing": validation.get("missing", []),
-                "retry": self.ctx.briefing_retries,
-            })
+            await self._emit(
+                "validation_failed",
+                {
+                    "missing": validation.get("missing", []),
+                    "retry": self.ctx.briefing_retries,
+                },
+            )
             await self._emit("state_change", {"state": self.sm.current_state})
 
     async def _run_writing(self) -> None:
@@ -160,11 +177,14 @@ class OrchestratorAgent:
         )
         self.ctx.draft_content = result.markdown
         self.ctx.writing_retries += 1
-        await self._emit("agent_done", {
-            "agent": "lead_writer",
-            "duration_ms": int((time.monotonic() - t0) * 1000),
-            "word_count": len(result.markdown.split()),
-        })
+        await self._emit(
+            "agent_done",
+            {
+                "agent": "lead_writer",
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+                "word_count": len(result.markdown.split()),
+            },
+        )
         self.sm.trigger(WorkflowTrigger.WRITING_DONE)
         await self._emit("state_change", {"state": WorkflowState.QUALITY_ANALYSIS})
 
@@ -178,10 +198,15 @@ class OrchestratorAgent:
         )
         self.ctx.quality_score = report.score
         self.ctx.quality_issues = report.issues
-        await self._emit("quality_report", {
-            "score": report.score, "passed": report.passed, "issues": report.issues,
-            "duration_ms": int((time.monotonic() - t0) * 1000),
-        })
+        await self._emit(
+            "quality_report",
+            {
+                "score": report.score,
+                "passed": report.passed,
+                "issues": report.issues,
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+            },
+        )
         if report.passed:
             self.sm.trigger(WorkflowTrigger.QUALITY_PASSED)
             await self._emit("state_change", {"state": WorkflowState.COMPLETED})

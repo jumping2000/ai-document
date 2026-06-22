@@ -3,8 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
-from types import ModuleType
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -62,6 +61,26 @@ def _install_import_stubs() -> None:
     sys.modules["agno.agent"] = agno_agent_module
     sys.modules["agno.models.openai"] = agno_openai_module
 
+    # Stub other LLM provider submodules so cross-imports inside agno don't crash
+    agno_openrouter_module = ModuleType("agno.models.openrouter")
+    agno_openrouter_sub = ModuleType("agno.models.openrouter.openrouter")
+    agno_openrouter_sub.OpenRouter = type(
+        "OpenRouter", (), {"__init__": lambda self, *a, **k: None}
+    )
+    agno_openrouter_module.OpenRouter = agno_openrouter_sub.OpenRouter
+    agno_anthropic_module = ModuleType("agno.models.anthropic")
+    agno_anthropic_claude = ModuleType("agno.models.anthropic.claude")
+    agno_anthropic_claude.Claude = type("Claude", (), {"__init__": lambda self, *a, **k: None})
+    agno_ollama_module = ModuleType("agno.models.ollama")
+    agno_ollama_chat = ModuleType("agno.models.ollama.chat")
+    agno_ollama_chat.Ollama = type("Ollama", (), {"__init__": lambda self, *a, **k: None})
+    sys.modules["agno.models.openrouter"] = agno_openrouter_module
+    sys.modules["agno.models.openrouter.openrouter"] = agno_openrouter_sub
+    sys.modules["agno.models.anthropic"] = agno_anthropic_module
+    sys.modules["agno.models.anthropic.claude"] = agno_anthropic_claude
+    sys.modules["agno.models.ollama"] = agno_ollama_module
+    sys.modules["agno.models.ollama.chat"] = agno_ollama_chat
+
     jinja2_module = ModuleType("jinja2")
 
     class _Template:
@@ -96,7 +115,9 @@ def _install_import_stubs() -> None:
         def __init__(self, *args, **kwargs) -> None:
             self.styles = {
                 "Normal": SimpleNamespace(font=SimpleNamespace(name="", size=0)),
-                "Title": SimpleNamespace(font=SimpleNamespace(size=0, bold=False, color=SimpleNamespace(rgb=None))),
+                "Title": SimpleNamespace(
+                    font=SimpleNamespace(size=0, bold=False, color=SimpleNamespace(rgb=None))
+                ),
                 "Body Text": SimpleNamespace(),
             }
             self.sections = []
@@ -173,14 +194,30 @@ def _install_import_stubs() -> None:
     mcp_module = ModuleType("app.mcp.client.mcp_client")
 
     class _MCPClient:
-        async def search_documents(self, query: str, limit: int = 5, filters: dict | None = None):
+        async def search_documents(self, query: str, limit: int = 5, kb_id: str | None = None):
             return []
+
         async def chat(self, message: str, kb_id: str | None = None, top_k: int = 6):
             return {"answer": "", "sources": [], "search_query": ""}
 
     mcp_module.MCPClient = _MCPClient
     mcp_module.MCPError = type("MCPError", (Exception,), {})
     sys.modules["app.mcp.client.mcp_client"] = mcp_module
+
+    # Stub for NanoRAGAdapter (RetrievalSkill now imports from adapters.nanorag)
+    adapters_module = ModuleType("app.mcp.client.adapters")
+    adapters_nanorag_module = ModuleType("app.mcp.client.adapters.nanorag")
+
+    class _NanoRAGAdapter:
+        async def search_documents(self, query: str, limit: int = 5, kb_id: str | None = None):
+            return []
+
+        async def chat(self, message: str, kb_id: str | None = None, top_k: int = 6):
+            return {"answer": "", "sources": [], "search_query": ""}
+
+    adapters_nanorag_module.NanoRAGAdapter = _NanoRAGAdapter
+    sys.modules["app.mcp.client.adapters"] = adapters_module
+    sys.modules["app.mcp.client.adapters.nanorag"] = adapters_nanorag_module
 
 
 def _load_runner_module(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -234,7 +271,7 @@ async def test_runner_completes_workflow_with_real_agent_contracts(
             )
 
     class FakeProcurementAgent:
-        async def enrich(self, requirements: dict, document_type: str):
+        async def enrich(self, requirements: dict, document_type: str, **kwargs):
             return SimpleNamespace(
                 enriched=requirements,
                 sources=["kb"],
@@ -290,3 +327,310 @@ async def test_runner_completes_workflow_with_real_agent_contracts(
     )
 
     assert result == {"status": "completed", "quality_score": 0.92}
+
+
+# ── Task 6: Wire Full Validation into Runner ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_validation_phase_calls_sla_consistency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """validate_sla_consistency is called during VALIDATION; issues are merged into validation result."""
+    runner_module = _load_runner_module(monkeypatch, tmp_path)
+
+    requirements_with_bad_sla = {
+        "project": {"title": "Sistema ERP", "organization": "Comune di Roma"},
+        "scope": {"objectives": ["Digitalizzare i processi"]},
+        "functional_requirements": [{"id": "FR-001"}, {"id": "FR-002"}, {"id": "FR-003"}],
+        "technical_requirements": [{"id": "TR-001"}],
+        "sla": {"availability": "100%"},
+        "security_compliance": {"standards": ["ISO 27001"]},
+        "timeline": {"go_live": "2026-01-01"},
+    }
+
+    class FakeRequirementAgent:
+        async def collect(self, workflow_id: str, document_type: str, existing: dict):
+            return SimpleNamespace(
+                requirements=requirements_with_bad_sla,
+                summary="summary",
+                missing_fields=[],
+                confidence=1.0,
+            )
+
+    class FakeProcurementAgent:
+        async def enrich(self, requirements: dict, document_type: str, **kwargs):
+            return SimpleNamespace(enriched=requirements, sources=[], standards_applied=[])
+
+    class FakeLeadWriterAgent:
+        async def write(
+            self, enriched_requirements: dict, document_type: str, quality_issues: list[str]
+        ):
+            return SimpleNamespace(
+                markdown="# Documento\n\n## Oggetto\nTest\n## Requisiti Funzionali\nTest\n## Requisiti Tecnici\nTest\n## Sicurezza\nTest\n## SLA\nTest\n## Integrazioni\nTest\n## Piano\nTest\n## Criteri\nTest\n",
+                sections=["Oggetto"],
+                docx_path="doc.docx",
+                pdf_path="doc.pdf",
+            )
+
+    class FakeQualityAgent:
+        async def review(self, content: str, requirements: dict, document_type: str):
+            return SimpleNamespace(
+                score=0.92,
+                passed=True,
+                issues=[],
+                suggestions=[],
+                section_scores={},
+                needs_enrichment=False,
+            )
+
+    monkeypatch.setattr(runner_module, "RequirementAgent", FakeRequirementAgent)
+    monkeypatch.setattr(runner_module, "ProcurementAgent", FakeProcurementAgent)
+    monkeypatch.setattr(runner_module, "LeadWriterAgent", FakeLeadWriterAgent)
+    monkeypatch.setattr(runner_module, "QualityAgent", FakeQualityAgent)
+
+    called_with: list[dict] = []
+    original_sla = runner_module.validate_sla_consistency
+
+    def spy_sla(sla: dict):
+        called_with.append(sla)
+        return original_sla(sla)
+
+    monkeypatch.setattr(runner_module, "validate_sla_consistency", spy_sla)
+
+    runner = runner_module.WorkflowRunner(db=object())
+
+    result = await runner.run(workflow_id="wf-sla", document_type="capitolato", initial_input={})
+
+    assert result["status"] == "completed"
+    assert len(called_with) >= 1, "validate_sla_consistency was not called"
+    assert called_with[0]["availability"] == "100%"
+
+
+@pytest.mark.asyncio
+async def test_validation_phase_emits_richness_score(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """SSE event 'richness_score' emitted with a float score."""
+    runner_module = _load_runner_module(monkeypatch, tmp_path)
+
+    complete_requirements = {
+        "project": {"title": "Sistema ERP", "organization": "Comune di Roma"},
+        "scope": {"objectives": ["Digitalizzare i processi"]},
+        "functional_requirements": [{"id": "FR-001"}, {"id": "FR-002"}, {"id": "FR-003"}],
+        "technical_requirements": [{"id": "TR-001"}],
+        "sla": {"availability": "99.9%"},
+        "security_compliance": {"standards": ["ISO 27001"]},
+        "timeline": {"go_live": "2026-01-01"},
+    }
+
+    class FakeRequirementAgent:
+        async def collect(self, workflow_id: str, document_type: str, existing: dict):
+            return SimpleNamespace(
+                requirements=complete_requirements, summary="", missing_fields=[], confidence=1.0
+            )
+
+    class FakeProcurementAgent:
+        async def enrich(self, requirements: dict, document_type: str, **kwargs):
+            return SimpleNamespace(enriched=requirements, sources=[], standards_applied=[])
+
+    class FakeLeadWriterAgent:
+        async def write(
+            self, enriched_requirements: dict, document_type: str, quality_issues: list[str]
+        ):
+            return SimpleNamespace(
+                markdown="# Documento\n\n## Oggetto\nTest\n## Requisiti Funzionali\nTest\n## Requisiti Tecnici\nTest\n## Sicurezza\nTest\n## SLA\nTest\n## Integrazioni\nTest\n## Piano\nTest\n## Criteri\nTest\n",
+                sections=["Oggetto"],
+                docx_path="doc.docx",
+                pdf_path="doc.pdf",
+            )
+
+    class FakeQualityAgent:
+        async def review(self, content: str, requirements: dict, document_type: str):
+            return SimpleNamespace(
+                score=0.92,
+                passed=True,
+                issues=[],
+                suggestions=[],
+                section_scores={},
+                needs_enrichment=False,
+            )
+
+    monkeypatch.setattr(runner_module, "RequirementAgent", FakeRequirementAgent)
+    monkeypatch.setattr(runner_module, "ProcurementAgent", FakeProcurementAgent)
+    monkeypatch.setattr(runner_module, "LeadWriterAgent", FakeLeadWriterAgent)
+    monkeypatch.setattr(runner_module, "QualityAgent", FakeQualityAgent)
+
+    runner = runner_module.WorkflowRunner(db=object())
+    q = runner_module.subscribe("wf-richness")
+
+    result = await runner.run(
+        workflow_id="wf-richness", document_type="capitolato", initial_input={}
+    )
+
+    assert result["status"] == "completed"
+
+    events = []
+    while not q.empty():
+        events.append(await q.get())
+
+    richness_events = [e for e in events if e["event"] == "richness_score"]
+    assert len(richness_events) >= 1, (
+        f"Expected richness_score event, got: {[e['event'] for e in events]}"
+    )
+    score = richness_events[0]["data"]["score"]
+    assert isinstance(score, float), f"Expected float score, got {type(score)}"
+    assert 0.0 <= score <= 1.0
+
+
+@pytest.mark.asyncio
+async def test_writing_phase_calls_placeholder_detection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Draft with [TBD] → 'placeholders_detected' SSE event emitted."""
+    runner_module = _load_runner_module(monkeypatch, tmp_path)
+
+    complete_requirements = {
+        "project": {"title": "Sistema ERP", "organization": "Comune di Roma"},
+        "scope": {"objectives": ["Digitalizzare i processi"]},
+        "functional_requirements": [{"id": "FR-001"}, {"id": "FR-002"}, {"id": "FR-003"}],
+        "technical_requirements": [{"id": "TR-001"}],
+        "sla": {"availability": "99.9%"},
+        "security_compliance": {"standards": ["ISO 27001"]},
+        "timeline": {"go_live": "2026-01-01"},
+    }
+
+    class FakeRequirementAgent:
+        async def collect(self, workflow_id: str, document_type: str, existing: dict):
+            return SimpleNamespace(
+                requirements=complete_requirements, summary="", missing_fields=[], confidence=1.0
+            )
+
+    class FakeProcurementAgent:
+        async def enrich(self, requirements: dict, document_type: str, **kwargs):
+            return SimpleNamespace(enriched=requirements, sources=[], standards_applied=[])
+
+    class FakeLeadWriterAgent:
+        async def write(
+            self, enriched_requirements: dict, document_type: str, quality_issues: list[str]
+        ):
+            return SimpleNamespace(
+                markdown="# Documento\n\n## Oggetto\nTest\n\n## Requisiti Funzionali\n[TBD]\n\n## Requisiti Tecnici\nTest\n\n## Sicurezza\nTest\n\n## SLA\nTest\n\n## Integrazioni\nTest\n\n## Piano\nTest\n\n## Criteri\nTest\n",
+                sections=["Oggetto"],
+                docx_path="doc.docx",
+                pdf_path="doc.pdf",
+            )
+
+    class FakeQualityAgent:
+        async def review(self, content: str, requirements: dict, document_type: str):
+            return SimpleNamespace(
+                score=0.85,
+                passed=True,
+                issues=[],
+                suggestions=[],
+                section_scores={},
+                needs_enrichment=False,
+            )
+
+    monkeypatch.setattr(runner_module, "RequirementAgent", FakeRequirementAgent)
+    monkeypatch.setattr(runner_module, "ProcurementAgent", FakeProcurementAgent)
+    monkeypatch.setattr(runner_module, "LeadWriterAgent", FakeLeadWriterAgent)
+    monkeypatch.setattr(runner_module, "QualityAgent", FakeQualityAgent)
+
+    runner = runner_module.WorkflowRunner(db=object())
+    q = runner_module.subscribe("wf-placeholder")
+
+    result = await runner.run(
+        workflow_id="wf-placeholder", document_type="capitolato", initial_input={}
+    )
+
+    assert result["status"] == "completed"
+
+    events = []
+    while not q.empty():
+        events.append(await q.get())
+
+    placeholder_events = [e for e in events if e["event"] == "placeholders_detected"]
+    assert len(placeholder_events) >= 1, (
+        f"Expected placeholders_detected event, got: {[e['event'] for e in events]}"
+    )
+    assert "[TBD]" in placeholder_events[0]["data"]["placeholders"]
+
+
+@pytest.mark.asyncio
+async def test_writing_phase_calls_document_sections(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Draft missing 'SLA' section → 'document_sections_warning' SSE event emitted."""
+    runner_module = _load_runner_module(monkeypatch, tmp_path)
+
+    complete_requirements = {
+        "project": {"title": "Sistema ERP", "organization": "Comune di Roma"},
+        "scope": {"objectives": ["Digitalizzare i processi"]},
+        "functional_requirements": [{"id": "FR-001"}, {"id": "FR-002"}, {"id": "FR-003"}],
+        "technical_requirements": [{"id": "TR-001"}],
+        "sla": {"availability": "99.9%"},
+        "security_compliance": {"standards": ["ISO 27001"]},
+        "timeline": {"go_live": "2026-01-01"},
+    }
+
+    class FakeRequirementAgent:
+        async def collect(self, workflow_id: str, document_type: str, existing: dict):
+            return SimpleNamespace(
+                requirements=complete_requirements, summary="", missing_fields=[], confidence=1.0
+            )
+
+    class FakeProcurementAgent:
+        async def enrich(self, requirements: dict, document_type: str, **kwargs):
+            return SimpleNamespace(enriched=requirements, sources=[], standards_applied=[])
+
+    class FakeLeadWriterAgent:
+        async def write(
+            self, enriched_requirements: dict, document_type: str, quality_issues: list[str]
+        ):
+            # Missing "SLA" section on purpose
+            return SimpleNamespace(
+                markdown="# Documento\n\n## Oggetto\nTest\n\n## Requisiti Funzionali\nTest\n\n## Requisiti Tecnici\nTest\n\n## Sicurezza\nTest\n\n## Integrazioni\nTest\n\n## Piano\nTest\n\n## Criteri\nTest\n",
+                sections=["Oggetto"],
+                docx_path="doc.docx",
+                pdf_path="doc.pdf",
+            )
+
+    class FakeQualityAgent:
+        async def review(self, content: str, requirements: dict, document_type: str):
+            return SimpleNamespace(
+                score=0.85,
+                passed=True,
+                issues=[],
+                suggestions=[],
+                section_scores={},
+                needs_enrichment=False,
+            )
+
+    monkeypatch.setattr(runner_module, "RequirementAgent", FakeRequirementAgent)
+    monkeypatch.setattr(runner_module, "ProcurementAgent", FakeProcurementAgent)
+    monkeypatch.setattr(runner_module, "LeadWriterAgent", FakeLeadWriterAgent)
+    monkeypatch.setattr(runner_module, "QualityAgent", FakeQualityAgent)
+
+    runner = runner_module.WorkflowRunner(db=object())
+    q = runner_module.subscribe("wf-sections")
+
+    result = await runner.run(
+        workflow_id="wf-sections", document_type="capitolato", initial_input={}
+    )
+
+    assert result["status"] == "completed"
+
+    events = []
+    while not q.empty():
+        events.append(await q.get())
+
+    section_events = [e for e in events if e["event"] == "document_sections_warning"]
+    assert len(section_events) >= 1, (
+        f"Expected document_sections_warning event, got: {[e['event'] for e in events]}"
+    )
+    assert "SLA" in section_events[0]["data"]["missing_sections"]

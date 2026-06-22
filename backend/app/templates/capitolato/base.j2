@@ -1,15 +1,15 @@
 {# Capitolato di Gara - Base Template #}
-{# Variables injected: enriched_requirements (dict) #}
+{# Variables injected directly from enriched_requirements dict #}
 
-{% set proj = enriched_requirements.get("enriched_requirements", {}).get("project", {}) %}
-{% set scope = enriched_requirements.get("enriched_requirements", {}).get("scope", {}) %}
-{% set reqs_f = enriched_requirements.get("enriched_requirements", {}).get("functional_requirements", []) %}
-{% set reqs_t = enriched_requirements.get("enriched_requirements", {}).get("technical_requirements", []) %}
-{% set sla = enriched_requirements.get("enriched_requirements", {}).get("sla", {}) %}
-{% set security = enriched_requirements.get("enriched_requirements", {}).get("security_compliance", {}) %}
-{% set integrations = enriched_requirements.get("enriched_requirements", {}).get("integrations", []) %}
-{% set timeline = enriched_requirements.get("enriched_requirements", {}).get("timeline", {}) %}
-{% set budget = enriched_requirements.get("enriched_requirements", {}).get("budget", {}) %}
+{% set proj = enriched_requirements.get("project", {}) %}
+{% set scope = enriched_requirements.get("scope", {}) %}
+{% set reqs_f = enriched_requirements.get("functional_requirements", []) %}
+{% set reqs_t = enriched_requirements.get("technical_requirements", []) %}
+{% set sla = enriched_requirements.get("sla", {}) %}
+{% set security = enriched_requirements.get("security_compliance", {}) %}
+{% set integrations = enriched_requirements.get("integrations", []) %}
+{% set timeline = enriched_requirements.get("timeline", {}) %}
+{% set budget = enriched_requirements.get("budget", {}) %}
 {% set reg_refs = enriched_requirements.get("regulatory_references", []) %}
 {% set eval_criteria = enriched_requirements.get("evaluation_criteria", []) %}
 

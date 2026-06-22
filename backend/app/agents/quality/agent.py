@@ -3,15 +3,16 @@ Quality Agent — semantic validation, consistency check, scoring.
 Input  : content (markdown), requirements, document_type
 Output : QualityReport(score, passed, issues, suggestions, needs_enrichment)
 """
+
 import json
-import re
-import structlog
 from dataclasses import dataclass, field
 
+import structlog
 from agno.agent import Agent
-from app.core.llm import get_model_adapter
 
 from app.core.config import settings
+from app.core.json_extract import extract_json
+from app.core.llm import get_model_adapter
 
 log = structlog.get_logger(__name__)
 
@@ -67,16 +68,15 @@ class QualityAgent:
             f"DOCUMENT:\n{content[:8000]}\n\n"
             f"ORIGINAL REQUIREMENTS: {requirements}\n\n"
             f"CHECKLIST:\n" + "\n".join(f"- {c}" for c in QUALITY_CHECKLIST) + "\n\n"
-            "Return JSON: {\"score\": float(0-1), \"passed\": bool, "
-            "\"issues\": [str], \"suggestions\": [str], "
-            "\"section_scores\": {section: float}, \"needs_enrichment\": bool}"
+            'Return JSON: {"score": float(0-1), "passed": bool, '
+            '"issues": [str], "suggestions": [str], '
+            '"section_scores": {section: float}, "needs_enrichment": bool}'
         )
         response = await self._agno.arun(prompt)
-        match = re.search(r"\{.*\}", response.content, re.DOTALL)
 
-        if match:
+        data = extract_json(response.content)
+        if data:
             try:
-                data = json.loads(match.group())
                 report = QualityReport(
                     score=float(data.get("score", 0.0)),
                     passed=bool(data.get("passed", False)),

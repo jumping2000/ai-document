@@ -9,7 +9,6 @@ from __future__ import annotations
 import pytest
 
 from app.skills.validation.validation_skill import (
-    ValidationResult,
     detect_placeholder_content,
     score_requirement_richness,
     validate_document_sections,
@@ -17,8 +16,8 @@ from app.skills.validation.validation_skill import (
     validate_sla_consistency,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def complete_capitolato_requirements() -> dict:
@@ -70,11 +69,10 @@ def incomplete_requirements() -> dict:
 
 # ── validate_requirements_completeness ───────────────────────────────────────
 
+
 class TestValidateRequirementsCompleteness:
     def test_complete_requirements_passes(self, complete_capitolato_requirements: dict) -> None:
-        result = validate_requirements_completeness(
-            complete_capitolato_requirements, "capitolato"
-        )
+        result = validate_requirements_completeness(complete_capitolato_requirements, "capitolato")
         assert result.valid is True
         assert result.missing_fields == []
         assert result.confidence == 1.0
@@ -94,9 +92,7 @@ class TestValidateRequirementsCompleteness:
         assert any("funzionali" in issue.lower() for issue in result.issues)
 
     def test_requisiti_document_type(self, complete_capitolato_requirements: dict) -> None:
-        result = validate_requirements_completeness(
-            complete_capitolato_requirements, "requisiti"
-        )
+        result = validate_requirements_completeness(complete_capitolato_requirements, "requisiti")
         assert result.valid is True
 
     def test_confidence_partial(self, incomplete_requirements: dict) -> None:
@@ -108,6 +104,7 @@ class TestValidateRequirementsCompleteness:
 
 
 # ── validate_sla_consistency ──────────────────────────────────────────────────
+
 
 class TestValidateSLAConsistency:
     def test_valid_sla(self) -> None:
@@ -127,8 +124,29 @@ class TestValidateSLAConsistency:
         result = validate_sla_consistency({})
         assert result.valid is True  # no constraints to violate
 
+    def test_rto_less_than_rpo_fails(self) -> None:
+        result = validate_sla_consistency({"rto": "30m", "rpo": "4h"})
+        assert result.valid is False
+        assert any("RTO" in issue and "RPO" in issue for issue in result.issues)
+
+    def test_rto_equals_rpo_fails(self) -> None:
+        result = validate_sla_consistency({"rto": "4h", "rpo": "4h"})
+        assert result.valid is False
+        assert any("RTO" in issue for issue in result.issues)
+
+    def test_unparsable_response_time_warning(self) -> None:
+        result = validate_sla_consistency({"response_time": "veloce"})
+        assert len(result.warnings) > 0
+        assert any("risposta" in w.lower() for w in result.warnings)
+
+    def test_zero_response_time_fails(self) -> None:
+        result = validate_sla_consistency({"response_time": "0"})
+        assert result.valid is False
+        assert any("positivo" in issue.lower() for issue in result.issues)
+
 
 # ── validate_document_sections ────────────────────────────────────────────────
+
 
 class TestValidateDocumentSections:
     COMPLETE_DOC = """
@@ -177,6 +195,7 @@ Peso offerta tecnica 70%...
 
 # ── detect_placeholder_content ───────────────────────────────────────────────
 
+
 class TestDetectPlaceholderContent:
     def test_detects_tbd(self) -> None:
         content = "Il fornitore dovrà rispettare [TBD] gli standard."
@@ -196,10 +215,9 @@ class TestDetectPlaceholderContent:
 
 # ── score_requirement_richness ────────────────────────────────────────────────
 
+
 class TestScoreRequirementRichness:
-    def test_complete_requirements_high_score(
-        self, complete_capitolato_requirements: dict
-    ) -> None:
+    def test_complete_requirements_high_score(self, complete_capitolato_requirements: dict) -> None:
         score = score_requirement_richness(complete_capitolato_requirements)
         assert score > 0.3  # reasonable minimum for a complete set
 
@@ -211,9 +229,7 @@ class TestScoreRequirementRichness:
         score = score_requirement_richness(complete_capitolato_requirements)
         assert 0.0 <= score <= 1.0
 
-    def test_more_requirements_higher_score(
-        self, complete_capitolato_requirements: dict
-    ) -> None:
+    def test_more_requirements_higher_score(self, complete_capitolato_requirements: dict) -> None:
         base = score_requirement_richness(complete_capitolato_requirements)
 
         enriched = complete_capitolato_requirements.copy()

@@ -8,14 +8,15 @@ dynamically via the protocol itself.
 
 from __future__ import annotations
 
+import asyncio
 import time
-from typing import Any
 from datetime import timedelta
+from typing import Any
 
 import structlog
 from fastmcp import Client
-from fastmcp.client.transports.sse import SSETransport
 from fastmcp.client.transports.http import StreamableHttpTransport
+from fastmcp.client.transports.sse import SSETransport
 
 from app.core.config import settings
 
@@ -42,6 +43,7 @@ class MCPClient:
         self._client: Client | None = None
         self._connected = False
         self._exit_stack = None
+        self._connect_lock = asyncio.Lock()
 
         # In-process TTL cache
         self._cache: dict[str, tuple[Any, float]] = {}
@@ -50,31 +52,36 @@ class MCPClient:
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
     async def connect(self) -> None:
-        """Open transport to MCP server (idempotent)."""
+        """Open transport to MCP server (idempotent, concurrency-safe)."""
         if self._connected:
             return
 
-        headers = {}
-        if self._api_key:
-            headers["X-API-Key"] = self._api_key
+        async with self._connect_lock:
+            # Double-check after acquiring lock
+            if self._connected:
+                return
 
-        # Create transport with headers
-        if self._url.endswith("/sse"):
-            transport = SSETransport(self._url, headers=headers if headers else None)
-        else:
-            transport = StreamableHttpTransport(self._url, headers=headers if headers else None)
+            headers = {}
+            if self._api_key:
+                headers["X-API-Key"] = self._api_key
 
-        # Create client with longer timeout
-        self._client = Client(
-            transport,
-            timeout=timedelta(seconds=60),
-            init_timeout=timedelta(seconds=30),
-            auto_initialize=True,
-        )
-        # Use the async context manager properly
-        self._exit_stack = await self._client.__aenter__()
-        self._connected = True
-        log.info("mcp_connected", url=self._url)
+            # Create transport with headers
+            if self._url.endswith("/sse"):
+                transport = SSETransport(self._url, headers=headers if headers else None)
+            else:
+                transport = StreamableHttpTransport(self._url, headers=headers if headers else None)
+
+            # Create client with longer timeout (120s for LLM-based tools)
+            self._client = Client(
+                transport,
+                timeout=timedelta(seconds=120),
+                init_timeout=timedelta(seconds=30),
+                auto_initialize=True,
+            )
+            # Use the async context manager properly
+            self._exit_stack = await self._client.__aenter__()
+            self._connected = True
+            log.info("mcp_connected", url=self._url)
 
     async def disconnect(self) -> None:
         """Close transport (idempotent)."""
@@ -109,11 +116,13 @@ class MCPClient:
 
         tools = []
         for tool in result:
-            tools.append({
-                "name": tool.name,
-                "description": tool.description or "",
-                "input_schema": tool.inputSchema if hasattr(tool, "inputSchema") else {},
-            })
+            tools.append(
+                {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "input_schema": tool.inputSchema if hasattr(tool, "inputSchema") else {},
+                }
+            )
 
         log.info("mcp_list_tools", count=len(tools))
         return tools
@@ -129,7 +138,13 @@ class MCPClient:
         Returns:
             Tool result (parsed from response)
         """
-        cache_key = f"tool:{name}:{hash(frozenset(arguments.items()))}"
+        import json as _json
+
+        try:
+            args_hash = hash(_json.dumps(arguments, sort_keys=True))
+        except (TypeError, ValueError):
+            args_hash = id(frozenset(str(arguments)))
+        cache_key = f"tool:{name}:{args_hash}"
         if cached := self._get_cache(cache_key):
             log.debug("mcp_cache_hit", tool=name)
             return cached
@@ -164,12 +179,14 @@ class MCPClient:
 
         resources = []
         for resource in result:
-            resources.append({
-                "uri": str(resource.uri),
-                "name": resource.name or "",
-                "description": resource.description or "",
-                "mime_type": resource.mimeType or "",
-            })
+            resources.append(
+                {
+                    "uri": str(resource.uri),
+                    "name": resource.name or "",
+                    "description": resource.description or "",
+                    "mime_type": resource.mimeType or "",
+                }
+            )
 
         log.info("mcp_list_resources", count=len(resources))
         return resources
@@ -222,17 +239,21 @@ class MCPClient:
             args = []
             if hasattr(prompt, "arguments") and prompt.arguments:
                 for arg in prompt.arguments:
-                    args.append({
-                        "name": arg.name,
-                        "description": arg.description or "",
-                        "required": getattr(arg, "required", False),
-                    })
+                    args.append(
+                        {
+                            "name": arg.name,
+                            "description": arg.description or "",
+                            "required": getattr(arg, "required", False),
+                        }
+                    )
 
-            prompts.append({
-                "name": prompt.name,
-                "description": prompt.description or "",
-                "arguments": args,
-            })
+            prompts.append(
+                {
+                    "name": prompt.name,
+                    "description": prompt.description or "",
+                    "arguments": args,
+                }
+            )
 
         log.info("mcp_list_prompts", count=len(prompts))
         return prompts
@@ -291,7 +312,7 @@ class MCPClient:
     @staticmethod
     def _extract_result(result: Any) -> Any:
         """Extract content from a CallToolResult.
-        
+
         Handles multiple content blocks by collecting all parsed items.
         If there's only one item, returns it directly.
         If there are multiple items, returns a list.
@@ -301,20 +322,21 @@ class MCPClient:
             for block in result.content:
                 if hasattr(block, "text"):
                     import json
+
                     text = block.text
                     try:
                         parsed = json.loads(text)
                         items.append(parsed)
                     except (json.JSONDecodeError, TypeError):
                         items.append(text)
-            
+
             if len(items) == 0:
                 return None
             elif len(items) == 1:
                 return items[0]
             else:
                 return items
-        
+
         if isinstance(result, dict):
             return result
         return result
@@ -347,10 +369,12 @@ class MCPClient:
                         content = msg.content.text
                     else:
                         content = str(msg.content)
-                messages.append({
-                    "role": getattr(msg, "role", "unknown"),
-                    "content": content,
-                })
+                messages.append(
+                    {
+                        "role": getattr(msg, "role", "unknown"),
+                        "content": content,
+                    }
+                )
             return {"messages": messages}
         return result
 
