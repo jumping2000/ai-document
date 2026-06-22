@@ -27,11 +27,11 @@ Multi-agent AI platform for automatic generation of enterprise IT procurement do
 │                                                                 │
 │  StateMachine → drives state transitions                        │
 │                                                                 │
-│  INIT → BRIEFING → ENRICHMENT → VALIDATION → WRITING → QA → ✓   │
+│  INIT → BRIEFING → ENRICHMENT → VALIDATION → WRITING → QA → ✓  │
 │              ↑_________↑__________↑                             │
 │                    (retry loops)                                │
-└──────┬──────────┬──────────┬──────────┬──────────┬──────────────┘
-       │          │          │          │          │
+└──────┬─────────┬──────────┬──────────┬──────────┬───────────────┘
+       │         │          │          │          │
   ┌────▼───┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐
   │ Orch.  │ │  Req.  │ │ Proc.  │ │ Writer │ │Quality │
   │ Agent  │ │ Agent  │ │ Agent  │ │ Agent  │ │ Agent  │

@@ -3,13 +3,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, Zap, CheckCircle2, XCircle, Clock,
   ChevronRight, Download, BarChart3, RefreshCw,
-  AlertTriangle, Layers, Brain, Search, PenTool, Shield
+  AlertTriangle, Layers, Brain, Search, PenTool, Shield,
+  Database
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useWorkflowStore } from '../stores/workflowStore';
 import { useWorkflowStream } from '../hooks/useWorkflowStream';
 import ThemeSwitcher from '../components/ThemeSwitcher';
+import LanguageSwitcher from '../components/LanguageSwitcher';
+import MCPSettings from './MCPSettings';
+import { useTranslation } from '../i18n/LanguageContext';
 import type { AgentName, DocumentType, WorkflowStateEnum } from '../types';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -19,23 +23,12 @@ const STATES: WorkflowStateEnum[] = [
   'WRITING', 'QUALITY_ANALYSIS', 'COMPLETED',
 ];
 
-const STATE_LABELS: Record<string, string> = {
-  INIT: 'Inizializzazione',
-  BRIEFING: 'Raccolta Requisiti',
-  ENRICHMENT: 'Arricchimento KB',
-  VALIDATION: 'Validazione',
-  WRITING: 'Generazione Doc.',
-  QUALITY_ANALYSIS: 'Quality Review',
-  COMPLETED: 'Completato',
-  FAILED: 'Errore',
-};
-
-const AGENT_META: Record<AgentName, { label: string; icon: React.ElementType; color: string }> = {
-  orchestrator: { label: 'Orchestrator',    icon: Layers,   color: '#6366f1' },
-  requirement:  { label: 'Requirement',     icon: Brain,    color: '#22d3ee' },
-  procurement:  { label: 'Procurement',     icon: Search,   color: '#a78bfa' },
-  lead_writer:  { label: 'Lead Writer',     icon: PenTool,  color: '#34d399' },
-  quality:      { label: 'Quality Agent',   icon: Shield,   color: '#fb923c' },
+const AGENT_META: Record<AgentName, { labelKey: string; icon: React.ElementType; color: string }> = {
+  orchestrator: { labelKey: 'agent.orchestrator', icon: Layers,   color: '#6366f1' },
+  requirement:  { labelKey: 'agent.requirement',  icon: Brain,    color: '#22d3ee' },
+  procurement:  { labelKey: 'agent.procurement',  icon: Search,   color: '#a78bfa' },
+  lead_writer:  { labelKey: 'agent.leadWriter',   icon: PenTool,  color: '#34d399' },
+  quality:      { labelKey: 'agent.quality',      icon: Shield,   color: '#fb923c' },
 };
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8001/api/v1';
@@ -55,6 +48,7 @@ function stateColor(s: string): string {
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function StateRail({ current }: { current: string }) {
+  const { t } = useTranslation();
   const idx = stateIndex(current);
   return (
     <div className="flex items-center gap-0 w-full overflow-x-auto pb-2">
@@ -86,7 +80,7 @@ function StateRail({ current }: { current: string }) {
                 text-[9px] mt-1 text-center leading-tight max-w-[64px]
                 ${active ? 'text-indigo-300 font-semibold' : done ? 'text-zinc-400' : 'text-zinc-600'}
               `}>
-                {STATE_LABELS[s]}
+                {t(`state.${s}`)}
               </span>
             </div>
             {i < STATES.length - 1 && (
@@ -105,6 +99,7 @@ function StateRail({ current }: { current: string }) {
 function AgentCard({ name, status, duration_ms }: {
   name: AgentName; status: string; duration_ms?: number;
 }) {
+  const { t } = useTranslation();
   const meta = AGENT_META[name];
   const Icon = meta.icon;
   const isRunning = status === 'running';
@@ -130,7 +125,7 @@ function AgentCard({ name, status, duration_ms }: {
         </div>
         <div className="flex-1 min-w-0">
           <div className={`text-xs font-semibold ${isRunning ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 dark:text-zinc-400'}`}>
-            {meta.label}
+            {t(meta.labelKey)}
           </div>
           <div className="text-[10px] text-zinc-500 dark:text-zinc-600 mt-0.5">
             {isRunning && (
@@ -139,12 +134,12 @@ function AgentCard({ name, status, duration_ms }: {
                   animate={{ opacity: [1, 0.3, 1] }}
                   transition={{ repeat: Infinity, duration: 1 }}
                 >●</motion.span>
-                In esecuzione…
+                {t('agent.running')}
               </span>
             )}
-            {isDone && duration_ms && `Completato in ${(duration_ms / 1000).toFixed(1)}s`}
-            {status === 'idle' && 'In attesa'}
-            {status === 'error' && <span className="text-red-400">Errore</span>}
+            {isDone && duration_ms && `${t('agent.completed')} ${(duration_ms / 1000).toFixed(1)}s`}
+            {status === 'idle' && t('agent.waiting')}
+            {status === 'error' && <span className="text-red-400">{t('agent.error')}</span>}
           </div>
         </div>
         {isDone && <CheckCircle2 size={14} className="text-emerald-400 flex-shrink-0" />}
@@ -155,6 +150,7 @@ function AgentCard({ name, status, duration_ms }: {
 }
 
 function QualityGauge({ score, passed }: { score: number; passed: boolean }) {
+  const { t } = useTranslation();
   const pct = Math.round(score * 100);
   const color = passed ? '#34d399' : score > 0.5 ? '#fb923c' : '#f87171';
   const circumference = 2 * Math.PI * 36;
@@ -183,7 +179,7 @@ function QualityGauge({ score, passed }: { score: number; passed: boolean }) {
       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
         passed ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
       }`}>
-        {passed ? '✓ APPROVATO' : '✗ REVISIONE'}
+        {passed ? t('quality.approved') : t('quality.revision')}
       </span>
     </div>
   );
@@ -192,9 +188,12 @@ function QualityGauge({ score, passed }: { score: number; passed: boolean }) {
 // ── Main App ───────────────────────────────────────────────────────────────────
 
 export default function WorkflowMonitorPage() {
-  const [view, setView] = useState<'form' | 'monitor' | 'document'>('form');
+  const { t } = useTranslation();
+  const [view, setView] = useState<'form' | 'monitor' | 'document' | 'knowledge'>('form');
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null);
   const [docPreview, setDocPreview] = useState<string>('');
+  const [mcpConnections, setMcpConnections] = useState<{id: string; name: string}[]>([]);
+  const [selectedMcp, setSelectedMcp] = useState<string>('');
   const [formData, setFormData] = useState({
     document_type: 'capitolato' as DocumentType,
     title: '',
@@ -212,6 +211,14 @@ export default function WorkflowMonitorPage() {
 
   useWorkflowStream(activeWorkflowId);
 
+  // Fetch MCP connections on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/mcp/connections`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setMcpConnections(data.filter((c: {is_active: boolean}) => c.is_active)))
+      .catch(() => {});
+  }, []);
+
   async function handleStart() {
     if (!formData.title || !formData.raw_description) return;
     reset();
@@ -219,7 +226,11 @@ export default function WorkflowMonitorPage() {
     const res = await fetch(`${API_BASE}/workflow/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...formData, form_data: {} }),
+      body: JSON.stringify({
+        ...formData,
+        form_data: {},
+        mcp_connection_id: selectedMcp || undefined,
+      }),
     });
     const data = await res.json();
     setActiveWorkflowId(data.workflow_id);
@@ -240,10 +251,10 @@ export default function WorkflowMonitorPage() {
           </div>
           <div>
             <h1 className="text-sm font-bold tracking-widest uppercase text-zinc-900 dark:text-white">
-              AI Document Platform
+              {t('app.title')}
             </h1>
             <p className="text-[10px] text-zinc-400 dark:text-zinc-500 tracking-wider">
-              Enterprise Document Generator
+              {t('app.subtitle')}
             </p>
           </div>
         </div>
@@ -264,24 +275,26 @@ export default function WorkflowMonitorPage() {
             </span>
           )}
           <ThemeSwitcher />
+          <LanguageSwitcher />
         </div>
       </header>
 
       {/* ── Nav tabs ───────────────────────────────────────────────────────── */}
       <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 flex gap-0">
-        {(['form', 'monitor', 'document'] as const).map((tab) => (
+        {(['form', 'monitor', 'document', 'knowledge'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setView(tab)}
             className={`
               px-5 py-3 text-[11px] font-semibold uppercase tracking-widest border-b-2
-              transition-colors duration-200
+              transition-colors duration-200 flex items-center gap-1.5
               ${view === tab
                 ? 'border-indigo-500 text-indigo-500 dark:text-indigo-400'
                 : 'border-transparent text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400'}
             `}
           >
-            {tab === 'form' ? 'Nuovo' : tab === 'monitor' ? 'Monitor' : 'Documento'}
+            {tab === 'knowledge' && <Database size={12} />}
+            {tab === 'form' ? t('nav.new') : tab === 'monitor' ? t('nav.monitor') : tab === 'document' ? t('nav.document') : t('nav.knowledge')}
           </button>
         ))}
       </nav>
@@ -300,10 +313,10 @@ export default function WorkflowMonitorPage() {
             >
               <div className="mb-8">
                 <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-white">
-                  Nuovo Documento
+                  {t('form.newDocument')}
                 </h2>
                 <p className="text-zinc-500 dark:text-zinc-500 text-sm mt-1">
-                  Avvia la generazione automatica tramite workflow multi-agente
+                  {t('form.newDocumentDesc')}
                 </p>
               </div>
 
@@ -311,27 +324,27 @@ export default function WorkflowMonitorPage() {
                 {/* Document type selector */}
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-2">
-                    Tipo Documento
+                    {t('form.documentType')}
                   </label>
                   <div className="grid grid-cols-2 gap-3">
-                    {(['capitolato', 'requisiti'] as DocumentType[]).map((t) => (
+                    {(['capitolato', 'requisiti'] as DocumentType[]).map((docType) => (
                       <button
-                        key={t}
-                        onClick={() => setFormData(p => ({ ...p, document_type: t }))}
+                        key={docType}
+                        onClick={() => setFormData(p => ({ ...p, document_type: docType }))}
                         className={`
                           p-4 rounded-xl border text-left transition-all duration-200
-                          ${formData.document_type === t
+                          ${formData.document_type === docType
                             ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300'
                             : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}
                         `}
                       >
                         <div className="text-sm font-bold mb-1">
-                          {t === 'capitolato' ? 'Capitolato di Gara' : 'Requisiti Funzionali'}
+                          {docType === 'capitolato' ? t('form.capitolato') : t('form.requisiti')}
                         </div>
                         <div className="text-[10px] opacity-70">
-                          {t === 'capitolato'
-                            ? 'Documento procurement IT completo'
-                            : 'Specifica requisiti tecnici e funzionali'}
+                          {docType === 'capitolato'
+                            ? t('form.capitolatoDesc')
+                            : t('form.requisitiDesc')}
                         </div>
                       </button>
                     ))}
@@ -341,27 +354,52 @@ export default function WorkflowMonitorPage() {
                 {/* Title */}
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-2">
-                    Titolo Progetto
+                    {t('form.projectTitle')}
                   </label>
                   <input
                     value={formData.title}
                     onChange={e => setFormData(p => ({ ...p, title: e.target.value }))}
-                    placeholder="es. Sistema ERP Cloud per PA"
+                    placeholder={t('form.projectTitlePlaceholder')}
                     className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3
                                text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-700
                                focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                 </div>
 
+                {/* MCP Connection selector */}
+                {mcpConnections.length > 0 && (
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-2">
+                      {t('form.knowledgeSource')}
+                    </label>
+                    <select
+                      value={selectedMcp}
+                      onChange={e => setSelectedMcp(e.target.value)}
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3
+                                 text-sm text-zinc-900 dark:text-white focus:outline-none focus:border-indigo-500 transition-colors"
+                    >
+                      <option value="">{t('form.noKnowledge')}</option>
+                      {mcpConnections.map(conn => (
+                        <option key={conn.id} value={conn.id}>{conn.name}</option>
+                      ))}
+                    </select>
+                    {selectedMcp && (
+                      <p className="text-[10px] text-emerald-500 mt-1.5">
+                        {t('form.knowledgeHint')}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Description */}
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-2">
-                    Descrizione Requisiti
+                    {t('form.description')}
                   </label>
                   <textarea
                     value={formData.raw_description}
                     onChange={e => setFormData(p => ({ ...p, raw_description: e.target.value }))}
-                    placeholder="Descrivi il progetto IT, gli obiettivi, i requisiti principali, le integrazioni necessarie, i vincoli di sicurezza e compliance…"
+                    placeholder={t('form.descriptionPlaceholder')}
                     rows={6}
                     className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3
                                text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-700 resize-none
@@ -379,7 +417,7 @@ export default function WorkflowMonitorPage() {
                              transition-colors duration-200 flex items-center justify-center gap-2"
                 >
                   <Zap size={16} />
-                  Avvia Workflow AI
+                  {t('form.startWorkflow')}
                 </motion.button>
               </div>
             </motion.div>
@@ -398,7 +436,7 @@ export default function WorkflowMonitorPage() {
               <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500">
-                    Stato Workflow
+                    {t('monitor.title')}
                   </h3>
                   <span className={`
                     text-xs font-bold px-3 py-1 rounded-full
@@ -406,7 +444,7 @@ export default function WorkflowMonitorPage() {
                       isFailed ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
                       'bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'}
                   `}>
-                    {STATE_LABELS[currentState] ?? currentState}
+                    {t(`state.${currentState}`) ?? currentState}
                   </span>
                 </div>
                 <StateRail current={currentState} />
@@ -416,7 +454,7 @@ export default function WorkflowMonitorPage() {
                 {/* Agent grid */}
                 <div className="lg:col-span-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-4">
-                    Agenti AI
+                    {t('monitor.agents')}
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {(Object.keys(AGENT_META) as AgentName[]).map((name) => (
@@ -435,7 +473,7 @@ export default function WorkflowMonitorPage() {
                   {qualityReport && (
                     <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5">
                       <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-4">
-                        Quality Score
+                        {t('monitor.qualityScore')}
                       </h3>
                       <QualityGauge
                         score={qualityReport.score}
@@ -463,30 +501,76 @@ export default function WorkflowMonitorPage() {
                   {/* Event log */}
                   <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4">
                     <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-3">
-                      Event Log
+                      {t('monitor.eventLog')}
                     </h3>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
                       {events.slice(-20).reverse().map((ev, i) => (
-                        <div key={i} className="flex items-center gap-2 text-[10px]">
-                          <span className="text-zinc-400 dark:text-zinc-700 w-16 flex-shrink-0 font-mono">
-                            {new Date().toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
-                          <span className={`
-                            px-1.5 py-0.5 rounded text-[9px] font-bold flex-shrink-0
-                            ${ev.event === 'completed' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
-                              ev.event === 'failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400' :
-                              ev.event === 'state_change' ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' :
-                              'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500'}
-                          `}>
-                            {ev.event}
-                          </span>
-                          <span className="text-zinc-500 dark:text-zinc-600 truncate">
-                            {JSON.stringify(ev.data).slice(0, 40)}
-                          </span>
+                        <div key={i} className={`
+                          flex flex-col gap-1 text-[10px] p-2 rounded-lg
+                          ${ev.event === 'validation_failed' ? 'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30' : ''}
+                          ${ev.event === 'failed' ? 'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30' : ''}
+                        `}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-zinc-400 dark:text-zinc-700 w-16 flex-shrink-0 font-mono">
+                              {new Date().toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </span>
+                            <span className={`
+                              px-1.5 py-0.5 rounded text-[9px] font-bold flex-shrink-0
+                              ${ev.event === 'completed' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+                                ev.event === 'failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400' :
+                                ev.event === 'validation_failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400' :
+                                ev.event === 'state_change' ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' :
+                                'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500'}
+                            `}>
+                              {ev.event === 'validation_failed' ? 'VALIDATION' : ev.event}
+                            </span>
+                            {ev.event !== 'validation_failed' && ev.event !== 'failed' && (
+                              <span className="text-zinc-500 dark:text-zinc-600 truncate">
+                                {JSON.stringify(ev.data).slice(0, 40)}
+                              </span>
+                            )}
+                          </div>
+                          {/* Show validation details */}
+                          {(ev.event === 'validation_failed' || ev.event === 'failed') && ev.data && (
+                            <div className="ml-[4.5rem] space-y-1">
+                              {(() => {
+                                const data = ev.data as {
+                                  issues?: string[];
+                                  missing_fields?: string[];
+                                  error?: string;
+                                  score?: number;
+                                  confidence?: number;
+                                };
+                                return (
+                                  <>
+                                    {data.issues && Array.isArray(data.issues) && data.issues.map((issue: string, j: number) => (
+                                      <div key={j} className="flex items-start gap-1.5">
+                                        <span className="text-red-400 mt-0.5">•</span>
+                                        <span className="text-red-600 dark:text-red-400">{issue}</span>
+                                      </div>
+                                    ))}
+                                    {data.missing_fields && Array.isArray(data.missing_fields) && data.missing_fields.length > 0 && (
+                                      <div className="text-[9px] text-red-500 dark:text-red-400">
+                                        Campi mancanti: {data.missing_fields.join(', ')}
+                                      </div>
+                                    )}
+                                    {data.error && (
+                                      <div className="text-red-600 dark:text-red-400">{data.error}</div>
+                                    )}
+                                    {data.score !== undefined && data.score !== null && (
+                                      <div className="text-[9px] text-zinc-500">
+                                        Score: {Math.round(data.score * 100)}%
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
                         </div>
                       ))}
                       {events.length === 0 && (
-                        <p className="text-zinc-400 dark:text-zinc-700 text-[10px]">Nessun evento ancora…</p>
+                        <p className="text-zinc-400 dark:text-zinc-700 text-[10px]">{t('monitor.noEvents')}</p>
                       )}
                     </div>
                   </div>
@@ -507,7 +591,7 @@ export default function WorkflowMonitorPage() {
                                  text-white text-xs font-bold rounded-xl transition-colors"
                     >
                       <FileText size={14} />
-                      Visualizza Documento
+                      {t('monitor.viewDocument')}
                     </button>
                   )}
                   <button
@@ -516,7 +600,7 @@ export default function WorkflowMonitorPage() {
                                text-white text-xs font-bold rounded-xl transition-colors"
                   >
                     <RefreshCw size={14} />
-                    Nuovo Workflow
+                    {t('monitor.newWorkflow')}
                   </button>
                 </motion.div>
               )}
@@ -532,17 +616,17 @@ export default function WorkflowMonitorPage() {
               exit={{ opacity: 0, y: -16 }}
             >
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-black tracking-tight text-zinc-900 dark:text-white">Documento Generato</h2>
+                <h2 className="text-lg font-black tracking-tight text-zinc-900 dark:text-white">{t('document.title')}</h2>
                 <div className="flex gap-2">
                   <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700
                                      text-xs font-bold text-zinc-700 dark:text-white rounded-xl transition-colors">
                     <Download size={12} />
-                    DOCX
+                    {t('document.downloadDocx')}
                   </button>
                   <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700
                                      text-xs font-bold text-zinc-700 dark:text-white rounded-xl transition-colors">
                     <Download size={12} />
-                    PDF
+                    {t('document.downloadPdf')}
                   </button>
                 </div>
               </div>
@@ -556,11 +640,23 @@ export default function WorkflowMonitorPage() {
                 ) : (
                   <div className="text-center py-16 text-zinc-400 dark:text-zinc-600">
                     <FileText size={32} className="mx-auto mb-3 opacity-30" />
-                    <p className="text-sm">Nessun documento disponibile.</p>
-                    <p className="text-xs mt-1">Completa un workflow per generare un documento.</p>
+                    <p className="text-sm">{t('document.noDocument')}</p>
+                    <p className="text-xs mt-1">{t('document.completeWorkflow')}</p>
                   </div>
                 )}
               </div>
+            </motion.div>
+          )}
+
+          {/* ── KNOWLEDGE ──────────────────────────────────────────────────── */}
+          {view === 'knowledge' && (
+            <motion.div
+              key="knowledge"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+            >
+              <MCPSettings />
             </motion.div>
           )}
 

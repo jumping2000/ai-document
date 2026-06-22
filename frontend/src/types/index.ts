@@ -90,3 +90,53 @@ export interface Document {
   version: number;
   created_at: string;
 }
+
+// ── MCP Connection ────────────────────────────────────────────────────────────
+
+export interface MCPConnection {
+  id: string;
+  name: string;
+  description: string | null;
+  url: string;
+  transport: string;
+  is_active: boolean;
+  health_status: string;
+  last_health_check: string | null;
+  default_kb_id: string | null;
+  discovered_tools: MCPTool[];
+  discovered_resources: MCPResource[];
+  discovered_prompts: MCPPrompt[];
+  discovered_kbs: MCPKnowledgeBase[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MCPKnowledgeBase {
+  id: string;
+  name: string;
+  documents?: number;
+  chunks?: number;
+}
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  input_schema?: Record<string, unknown>;
+}
+
+export interface MCPResource {
+  uri: string;
+  name: string;
+  description: string;
+  mime_type?: string;
+}
+
+export interface MCPPrompt {
+  name: string;
+  description: string;
+  arguments?: {
+    name: string;
+    description: string;
+    required?: boolean;
+  }[];
+}

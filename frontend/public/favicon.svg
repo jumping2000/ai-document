@@ -1,63 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#667EEA"/>
-      <stop offset="100%" style="stop-color:#764BA2"/>
+      <stop offset="0%" style="stop-color:#4F46E5"/>
+      <stop offset="100%" style="stop-color:#7C3AED"/>
     </linearGradient>
-    <linearGradient id="doc" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#FFFFFF"/>
-      <stop offset="100%" style="stop-color:#E8E8F0"/>
-    </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.25"/>
-    </filter>
   </defs>
   
-  <!-- Background -->
-  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <!-- Background rounded square -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
   
-  <!-- Document body -->
-  <g filter="url(#shadow)">
-    <path d="M160 100 C160 88 168 80 180 80 L290 80 L350 140 L350 400 C350 412 342 420 330 420 L180 420 C168 420 160 412 160 400 Z" fill="url(#doc)"/>
-    <path d="M290 80 L290 120 C290 132 298 140 310 140 L350 140 Z" fill="#D0D0E0"/>
-  </g>
+  <!-- Robot/Agent head - white -->
+  <rect x="166" y="100" width="180" height="140" rx="28" fill="white"/>
+  <!-- Antenna -->
+  <line x1="256" y1="100" x2="256" y2="68" stroke="white" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="256" cy="58" r="14" fill="white" opacity="0.8"/>
+  <!-- Eyes - purple -->
+  <circle cx="222" cy="164" r="18" fill="#7C3AED"/>
+  <circle cx="290" cy="164" r="18" fill="#7C3AED"/>
+  <!-- Mouth - purple -->
+  <rect x="226" y="198" width="60" height="10" rx="5" fill="#7C3AED"/>
   
-  <!-- AI Brain icon -->
-  <g transform="translate(255, 260)">
-    <!-- Outer ring -->
-    <circle cx="0" cy="0" r="52" fill="none" stroke="#667EEA" stroke-width="5" opacity="0.4"/>
-    
-    <!-- Neural connections -->
-    <line x1="-35" y1="0" x2="-18" y2="0" stroke="#667EEA" stroke-width="4" stroke-linecap="round"/>
-    <line x1="18" y1="0" x2="35" y2="0" stroke="#667EEA" stroke-width="4" stroke-linecap="round"/>
-    <line x1="0" y1="-35" x2="0" y2="-18" stroke="#667EEA" stroke-width="4" stroke-linecap="round"/>
-    <line x1="0" y1="18" x2="0" y2="35" stroke="#667EEA" stroke-width="4" stroke-linecap="round"/>
-    
-    <!-- Diagonal connections -->
-    <line x1="-25" y1="-25" x2="-12" y2="-12" stroke="#764BA2" stroke-width="3" stroke-linecap="round"/>
-    <line x1="25" y1="-25" x2="12" y2="-12" stroke="#764BA2" stroke-width="3" stroke-linecap="round"/>
-    <line x1="-25" y1="25" x2="-12" y2="12" stroke="#764BA2" stroke-width="3" stroke-linecap="round"/>
-    <line x1="25" y1="25" x2="12" y2="12" stroke="#764BA2" stroke-width="3" stroke-linecap="round"/>
-    
-    <!-- Center brain -->
-    <circle cx="0" cy="0" r="16" fill="#667EEA"/>
-    <circle cx="0" cy="0" r="8" fill="#FFFFFF"/>
-    
-    <!-- Outer nodes -->
-    <circle cx="-35" cy="0" r="6" fill="#764BA2"/>
-    <circle cx="35" cy="0" r="6" fill="#764BA2"/>
-    <circle cx="0" cy="-35" r="6" fill="#764BA2"/>
-    <circle cx="0" cy="35" r="6" fill="#764BA2"/>
-    
-    <!-- Diagonal nodes -->
-    <circle cx="-25" cy="-25" r="5" fill="#667EEA"/>
-    <circle cx="25" cy="-25" r="5" fill="#667EEA"/>
-    <circle cx="-25" cy="25" r="5" fill="#667EEA"/>
-    <circle cx="25" cy="25" r="5" fill="#667EEA"/>
-  </g>
-  
-  <!-- Text lines -->
-  <rect x="195" y="340" width="110" height="8" rx="4" fill="#667EEA" opacity="0.5"/>
-  <rect x="195" y="360" width="80" height="8" rx="4" fill="#764BA2" opacity="0.4"/>
-  <rect x="195" y="380" width="95" height="8" rx="4" fill="#667EEA" opacity="0.3"/>
+  <!-- AI text - white -->
+  <text x="256" y="410" font-family="Arial, Helvetica, sans-serif" font-size="200" font-weight="900" fill="white" text-anchor="middle" letter-spacing="-8">AI</text>
 </svg>

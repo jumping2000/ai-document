@@ -11,6 +11,7 @@ GET  /workflow/{id}/quality-report — latest quality report
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -34,6 +35,7 @@ class StartWorkflowRequest(BaseModel):
     title: str = Field(..., min_length=5, max_length=500)
     raw_description: str = Field(..., min_length=20)
     form_data: dict[str, Any] = Field(default_factory=dict)
+    mcp_connection_id: str | None = None
 
 
 class WorkflowResponse(BaseModel):
@@ -82,6 +84,7 @@ async def start_workflow(
         "raw_description": req.raw_description,
         "form_data": req.form_data,
         "title": req.title,
+        "mcp_connection_id": req.mcp_connection_id,
     }
 
     # Persist initial workflow row so clients can query immediately
@@ -92,6 +95,7 @@ async def start_workflow(
         state="INIT",
         retry_count=0,
         metadata_=initial_input,
+        mcp_connection_id=uuid.UUID(req.mcp_connection_id) if req.mcp_connection_id else None,
     )
     db.add(wf)
     await db.commit()
@@ -99,6 +103,8 @@ async def start_workflow(
 
     async def _run_workflow() -> None:
         async with AsyncSessionLocal() as bg_db:
+            # Small delay to allow WebSocket to connect first
+            await asyncio.sleep(0.5)
             runner = WorkflowRunner(bg_db)
             await runner.run(workflow_id, req.document_type, initial_input)
 

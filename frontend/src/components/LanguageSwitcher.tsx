@@ -1,24 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Monitor, ChevronDown } from 'lucide-react';
-import { useTheme } from '../contexts/ThemeContext';
-import type { Theme } from '../contexts/ThemeContext';
+import { Globe, ChevronDown } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
+import type { Locale } from '../i18n/translations';
 
-const themeOptions: { value: Theme; icon: typeof Sun }[] = [
-  { value: 'light', icon: Sun },
-  { value: 'dark', icon: Moon },
-  { value: 'system', icon: Monitor },
+const languages: { value: Locale; label: string; flag: string }[] = [
+  { value: 'it', label: 'Italiano', flag: '🇮🇹' },
+  { value: 'en', label: 'English', flag: '🇬🇧' },
 ];
 
-export default function ThemeSwitcher() {
-  const { theme, setTheme } = useTheme();
-  const { t } = useTranslation();
+export default function LanguageSwitcher() {
+  const { locale, setLocale } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const current = themeOptions.find(o => o.value === theme) ?? themeOptions[2];
-  const Icon = current.icon;
-  const label = t(`theme.${theme}`);
+  const current = languages.find(l => l.value === locale) ?? languages[0];
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -37,10 +32,10 @@ export default function ThemeSwitcher() {
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
                    bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700
                    text-zinc-700 dark:text-zinc-300 transition-colors"
-        aria-label="Cambia tema"
+        aria-label="Cambia lingua"
       >
-        <Icon size={14} />
-        <span className="text-xs font-medium hidden sm:inline">{label}</span>
+        <span className="text-sm">{current.flag}</span>
+        <span className="text-xs font-medium hidden sm:inline">{current.value.toUpperCase()}</span>
         <ChevronDown size={10} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -48,20 +43,20 @@ export default function ThemeSwitcher() {
         <div className="absolute right-0 top-full mt-1 w-36 py-1 rounded-xl
                         bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700
                         shadow-lg dark:shadow-black/40 z-50">
-          {themeOptions.map(({ value, icon: OptionIcon }) => (
+          {languages.map(({ value, label, flag }) => (
             <button
               key={value}
-              onClick={() => { setTheme(value); setOpen(false); }}
+              onClick={() => { setLocale(value); setOpen(false); }}
               className={`
                 w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors
-                ${theme === value
+                ${locale === value
                   ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10'
                   : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}
               `}
             >
-              <OptionIcon size={13} />
-              {t(`theme.${value}`)}
-              {theme === value && <span className="ml-auto text-[10px]">●</span>}
+              <span className="text-base">{flag}</span>
+              {label}
+              {locale === value && <span className="ml-auto text-[10px]">●</span>}
             </button>
           ))}
         </div>

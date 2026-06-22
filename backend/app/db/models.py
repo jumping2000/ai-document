@@ -35,6 +35,27 @@ class User(TimestampMixin, Base):
     workflows: Mapped[list["Workflow"]] = relationship(back_populates="owner")
 
 
+class MCPConnection(TimestampMixin, Base):
+    __tablename__ = "mcp_connections"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str] = mapped_column(String(500))
+    transport: Mapped[str] = mapped_column(String(30), default="streamable-http")
+    api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_kb_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    discovered_tools: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    discovered_resources: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    discovered_prompts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    discovered_kbs: Mapped[dict[str, Any]] = mapped_column(JSON, default=list)
+    health_status: Mapped[str] = mapped_column(String(20), default="unknown")
+    last_health_check: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    workflows: Mapped[list["Workflow"]] = relationship(back_populates="mcp_connection")
+
+
 class Workflow(TimestampMixin, Base):
     __tablename__ = "workflows"
 
@@ -45,8 +66,12 @@ class Workflow(TimestampMixin, Base):
     state: Mapped[str] = mapped_column(String(50), default="INIT", index=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    mcp_connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("mcp_connections.id"), nullable=True
+    )
 
     owner: Mapped["User"] = relationship(back_populates="workflows")
+    mcp_connection: Mapped["MCPConnection | None"] = relationship(back_populates="workflows")
     states: Mapped[list["WorkflowState"]] = relationship(back_populates="workflow")
     agent_outputs: Mapped[list["AgentOutput"]] = relationship(back_populates="workflow")
     documents: Mapped[list["Document"]] = relationship(back_populates="workflow")

@@ -1,22 +1,21 @@
 """
-MCP Client — nanoRAG via FastMCP
+Generic MCP Client — works with ANY MCP server.
 
-Connects to a nanoRAG MCP server (SSE transport) and exposes
-all tools as typed async methods with:
-- lazy connection + explicit lifecycle
-- in-process TTL cache for search/chat
-- structured logging
-
-All functions raise MCPError on unrecoverable failure.
+Implements the MCP protocol (tools, resources, prompts) without
+server-specific knowledge. The client discovers capabilities
+dynamically via the protocol itself.
 """
 
 from __future__ import annotations
 
 import time
 from typing import Any
+from datetime import timedelta
 
 import structlog
 from fastmcp import Client
+from fastmcp.client.transports.sse import SSETransport
+from fastmcp.client.transports.http import StreamableHttpTransport
 
 from app.core.config import settings
 
@@ -29,31 +28,20 @@ class MCPError(Exception):
 
 class MCPClient:
     """
-    FastMCP client for the nanoRAG knowledge-base server.
+    Generic FastMCP client that works with ANY MCP server.
 
-    Tools exposed by the server:
+    Discovers server capabilities (tools, resources, prompts) via
+    the MCP protocol itself — no hardcoded tool names.
 
-    ┌──────────────────────────┬────────────────────────────────────────┐
-    │ Tool                     │ Signature                              │
-    ├──────────────────────────┼────────────────────────────────────────┤
-    │ nanorag_health           │ () → dict                              │
-    │ nanorag_list_kbs         │ () → list[dict]                        │
-    │ nanorag_list_documents   │ (kb_id: str) → list[dict]              │
-    │ nanorag_get_graph        │ (kb_id, limit=18, min_weight=1) → dict │
-    │ nanorag_get_node_detail  │ (kb_id, entity_id, limit=12) → dict    │
-    │ nanorag_chat             │ (kb_id, message, top_k=6) → dict       │
-    │ nanorag_upload_document  │ (kb_id, file_content, filename) → dict │
-    │ nanorag_delete_document  │ (kb_id, document_id) → dict            │
-    └──────────────────────────┴────────────────────────────────────────┘
-
-    Caching:  search/chat results cached in-process for 15 minutes.
+    Caching: results cached in-process for 15 minutes.
     """
 
-    def __init__(self) -> None:
-        self._url = settings.mcp_server_url.rstrip("/")
-        self._kb_id = settings.mcp_default_kb_id
+    def __init__(self, url: str | None = None, api_key: str | None = None) -> None:
+        self._url = (url or settings.mcp_server_url).rstrip("/")
+        self._api_key = api_key or settings.mcp_api_key
         self._client: Client | None = None
         self._connected = False
+        self._exit_stack = None
 
         # In-process TTL cache
         self._cache: dict[str, tuple[Any, float]] = {}
@@ -62,11 +50,29 @@ class MCPClient:
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
     async def connect(self) -> None:
-        """Open SSE transport to the MCP server (idempotent)."""
+        """Open transport to MCP server (idempotent)."""
         if self._connected:
             return
-        self._client = Client(self._url)
-        await self._client.__aenter__()
+
+        headers = {}
+        if self._api_key:
+            headers["X-API-Key"] = self._api_key
+
+        # Create transport with headers
+        if self._url.endswith("/sse"):
+            transport = SSETransport(self._url, headers=headers if headers else None)
+        else:
+            transport = StreamableHttpTransport(self._url, headers=headers if headers else None)
+
+        # Create client with longer timeout
+        self._client = Client(
+            transport,
+            timeout=timedelta(seconds=60),
+            init_timeout=timedelta(seconds=30),
+            auto_initialize=True,
+        )
+        # Use the async context manager properly
+        self._exit_stack = await self._client.__aenter__()
         self._connected = True
         log.info("mcp_connected", url=self._url)
 
@@ -74,9 +80,13 @@ class MCPClient:
         """Close transport (idempotent)."""
         if not self._connected or self._client is None:
             return
-        await self._client.__aexit__(None, None, None)
+        try:
+            await self._client.__aexit__(None, None, None)
+        except Exception:
+            pass
         self._connected = False
         self._client = None
+        self._exit_stack = None
         log.info("mcp_disconnected")
 
     async def _ensure_connected(self) -> Client:
@@ -85,186 +95,263 @@ class MCPClient:
         assert self._client is not None
         return self._client
 
-    # ── Public API ────────────────────────────────────────────────────────
+    # ── Tools ─────────────────────────────────────────────────────────────
 
-    # -- health ------------------------------------------------------------
-
-    async def health_check(self) -> dict[str, Any]:
-        """Returns system status dict from nanorag_health."""
-        return await self._call_tool("nanorag_health", {})
-
-    # -- knowledge bases ---------------------------------------------------
-
-    async def list_kbs(self) -> list[dict[str, Any]]:
-        """List all knowledge bases."""
-        return await self._call_tool("nanorag_list_kbs", {})
-
-    # -- documents ---------------------------------------------------------
-
-    async def list_documents(self, kb_id: str | None = None) -> list[dict[str, Any]]:
-        """List documents in a knowledge base."""
-        return await self._call_tool("nanorag_list_documents", {
-            "kb_id": kb_id or self._kb_id,
-        })
-
-    async def upload_document(
-        self,
-        file_content: bytes,
-        filename: str = "document",
-        kb_id: str | None = None,
-    ) -> dict[str, Any]:
-        """Upload a document. Returns {document_id, chunk_count}."""
-        return await self._call_tool("nanorag_upload_document", {
-            "kb_id": kb_id or self._kb_id,
-            "file_content": file_content,
-            "filename": filename,
-        })
-
-    async def delete_document(
-        self,
-        document_id: str,
-        kb_id: str | None = None,
-    ) -> dict[str, Any]:
-        """Delete a document. Returns {status: 'ok'}."""
-        return await self._call_tool("nanorag_delete_document", {
-            "kb_id": kb_id or self._kb_id,
-            "document_id": document_id,
-        })
-
-    # -- graph -------------------------------------------------------------
-
-    async def get_graph(
-        self,
-        kb_id: str | None = None,
-        limit: int = 18,
-        min_weight: int = 1,
-    ) -> dict[str, Any]:
-        """Snapshot of the knowledge graph."""
-        return await self._call_tool("nanorag_get_graph", {
-            "kb_id": kb_id or self._kb_id,
-            "limit": limit,
-            "min_weight": min_weight,
-        })
-
-    async def get_node_detail(
-        self,
-        entity_id: str,
-        kb_id: str | None = None,
-        evidence_limit: int = 12,
-    ) -> dict[str, Any]:
-        """Entity detail with relationships and supporting documents."""
-        return await self._call_tool("nanorag_get_node_detail", {
-            "kb_id": kb_id or self._kb_id,
-            "entity_id": entity_id,
-            "evidence_limit": evidence_limit,
-        })
-
-    # -- chat / search -----------------------------------------------------
-
-    async def chat(
-        self,
-        message: str,
-        kb_id: str | None = None,
-        top_k: int = 6,
-    ) -> dict[str, Any]:
-        """Grounded chat. Returns {answer, sources, search_query}."""
-        return await self._call_tool(
-            "nanorag_chat",
-            {
-                "kb_id": kb_id or self._kb_id,
-                "message": message,
-                "top_k": top_k,
-            },
-            cache_key=f"chat:{message}:{top_k}",
-        )
-
-    async def search_documents(
-        self,
-        query: str,
-        limit: int = 5,
-        filters: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+    async def list_tools(self) -> list[dict[str, Any]]:
         """
-        Backward-compatible search via nanorag_chat.
+        List all tools available on the MCP server.
 
-        Calls nanorag_chat and extracts the ``sources`` list,
-        returning results in the legacy format:
-        [{source, title, excerpt, relevance_score, metadata}, …]
+        Returns:
+            List of tool dicts with: name, description, inputSchema
         """
-        result = await self._call_tool(
-            "nanorag_chat",
-            {
-                "kb_id": self._kb_id,
-                "message": query,
-                "top_k": limit,
-            },
-            cache_key=f"search:{query}:{limit}",
-        )
-        # nanorag_chat returns {answer, sources, search_query}
-        raw_sources: list[dict[str, Any]] = result.get("sources", []) if isinstance(result, dict) else []
+        client = await self._ensure_connected()
+        result = await client.list_tools()
 
-        # Normalise to legacy format
-        return [
-            {
-                "source": s.get("document_id", s.get("source", "")),
-                "title": s.get("title", s.get("document_id", "")),
-                "excerpt": s.get("content", s.get("excerpt", ""))[:500],
-                "relevance_score": s.get("score", s.get("relevance_score", 0.0)),
-                "metadata": s.get("metadata", {}),
-            }
-            for s in raw_sources[:limit]
-        ]
+        tools = []
+        for tool in result:
+            tools.append({
+                "name": tool.name,
+                "description": tool.description or "",
+                "input_schema": tool.inputSchema if hasattr(tool, "inputSchema") else {},
+            })
 
-    # ── Internal helpers ──────────────────────────────────────────────────
+        log.info("mcp_list_tools", count=len(tools))
+        return tools
 
-    async def _call_tool(
-        self,
-        tool_name: str,
-        arguments: dict[str, Any],
-        cache_key: str | None = None,
-    ) -> Any:
-        """Call an MCP tool with caching and logging."""
-        if cache_key:
-            if cached := self._get_cache(cache_key):
-                log.debug("mcp_cache_hit", tool=tool_name, key=cache_key)
-                return cached
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+        """
+        Call any tool by name with arguments.
+
+        Args:
+            name: Tool name (discovered via list_tools)
+            arguments: Tool arguments dict
+
+        Returns:
+            Tool result (parsed from response)
+        """
+        cache_key = f"tool:{name}:{hash(frozenset(arguments.items()))}"
+        if cached := self._get_cache(cache_key):
+            log.debug("mcp_cache_hit", tool=name)
+            return cached
 
         client = await self._ensure_connected()
         start = time.monotonic()
 
         try:
-            result = await client.call_tool(tool_name, arguments)
+            result = await client.call_tool(name, arguments)
         except Exception as exc:
-            log.error("mcp_call_failed", tool=tool_name, error=str(exc))
-            raise MCPError(f"Tool '{tool_name}' failed: {exc}") from exc
+            log.error("mcp_call_failed", tool=name, error=str(exc))
+            raise MCPError(f"Tool '{name}' failed: {exc}") from exc
 
         duration_ms = int((time.monotonic() - start) * 1000)
-        log.info("mcp_call_ok", tool=tool_name, duration_ms=duration_ms)
+        log.info("mcp_call_ok", tool=name, duration_ms=duration_ms)
 
-        # Extract content from CallToolResult
         data = self._extract_result(result)
-
-        if cache_key:
-            self._set_cache(cache_key, data)
+        self._set_cache(cache_key, data)
         return data
+
+    # ── Resources ─────────────────────────────────────────────────────────
+
+    async def list_resources(self) -> list[dict[str, Any]]:
+        """
+        List all resources available on the MCP server.
+
+        Returns:
+            List of resource dicts with: uri, name, description, mimeType
+        """
+        client = await self._ensure_connected()
+        result = await client.list_resources()
+
+        resources = []
+        for resource in result:
+            resources.append({
+                "uri": str(resource.uri),
+                "name": resource.name or "",
+                "description": resource.description or "",
+                "mime_type": resource.mimeType or "",
+            })
+
+        log.info("mcp_list_resources", count=len(resources))
+        return resources
+
+    async def read_resource(self, uri: str) -> Any:
+        """
+        Read a resource by URI.
+
+        Args:
+            uri: Resource URI (discovered via list_resources)
+
+        Returns:
+            Resource content
+        """
+        cache_key = f"resource:{uri}"
+        if cached := self._get_cache(cache_key):
+            log.debug("mcp_cache_hit", resource=uri)
+            return cached
+
+        client = await self._ensure_connected()
+        start = time.monotonic()
+
+        try:
+            result = await client.read_resource(uri)
+        except Exception as exc:
+            log.error("mcp_read_failed", resource=uri, error=str(exc))
+            raise MCPError(f"Resource '{uri}' failed: {exc}") from exc
+
+        duration_ms = int((time.monotonic() - start) * 1000)
+        log.info("mcp_read_ok", resource=uri, duration_ms=duration_ms)
+
+        data = self._extract_resource_result(result)
+        self._set_cache(cache_key, data)
+        return data
+
+    # ── Prompts ───────────────────────────────────────────────────────────
+
+    async def list_prompts(self) -> list[dict[str, Any]]:
+        """
+        List all prompts available on the MCP server.
+
+        Returns:
+            List of prompt dicts with: name, description, arguments
+        """
+        client = await self._ensure_connected()
+        result = await client.list_prompts()
+
+        prompts = []
+        for prompt in result:
+            args = []
+            if hasattr(prompt, "arguments") and prompt.arguments:
+                for arg in prompt.arguments:
+                    args.append({
+                        "name": arg.name,
+                        "description": arg.description or "",
+                        "required": getattr(arg, "required", False),
+                    })
+
+            prompts.append({
+                "name": prompt.name,
+                "description": prompt.description or "",
+                "arguments": args,
+            })
+
+        log.info("mcp_list_prompts", count=len(prompts))
+        return prompts
+
+    async def get_prompt(self, name: str, arguments: dict[str, str] | None = None) -> Any:
+        """
+        Get a prompt by name with arguments.
+
+        Args:
+            name: Prompt name (discovered via list_prompts)
+            arguments: Prompt arguments dict
+
+        Returns:
+            Prompt result (messages list)
+        """
+        client = await self._ensure_connected()
+        start = time.monotonic()
+
+        try:
+            result = await client.get_prompt(name, arguments or {})
+        except Exception as exc:
+            log.error("mcp_prompt_failed", prompt=name, error=str(exc))
+            raise MCPError(f"Prompt '{name}' failed: {exc}") from exc
+
+        duration_ms = int((time.monotonic() - start) * 1000)
+        log.info("mcp_prompt_ok", prompt=name, duration_ms=duration_ms)
+
+        return self._extract_prompt_result(result)
+
+    # ── Discovery ─────────────────────────────────────────────────────────
+
+    async def discover_all(self) -> dict[str, Any]:
+        """
+        Discover all server capabilities.
+
+        Returns:
+            dict with tools, resources, and prompts lists
+        """
+        tools = await self.list_tools()
+        resources = await self.list_resources()
+        prompts = await self.list_prompts()
+
+        return {
+            "tools": tools,
+            "resources": resources,
+            "prompts": prompts,
+            "summary": {
+                "tools_count": len(tools),
+                "resources_count": len(resources),
+                "prompts_count": len(prompts),
+            },
+        }
+
+    # ── Internal helpers ──────────────────────────────────────────────────
 
     @staticmethod
     def _extract_result(result: Any) -> Any:
-        """Extract the first text content from a CallToolResult."""
-        # fastmcp CallToolResult has .content (list of content blocks)
+        """Extract content from a CallToolResult.
+        
+        Handles multiple content blocks by collecting all parsed items.
+        If there's only one item, returns it directly.
+        If there are multiple items, returns a list.
+        """
         if hasattr(result, "content"):
+            items = []
             for block in result.content:
                 if hasattr(block, "text"):
                     import json
-
                     text = block.text
                     try:
-                        return json.loads(text)
+                        parsed = json.loads(text)
+                        items.append(parsed)
                     except (json.JSONDecodeError, TypeError):
-                        return text
-        # Fallback: result might already be a plain value
+                        items.append(text)
+            
+            if len(items) == 0:
+                return None
+            elif len(items) == 1:
+                return items[0]
+            else:
+                return items
+        
         if isinstance(result, dict):
             return result
+        return result
+
+    @staticmethod
+    def _extract_resource_result(result: Any) -> Any:
+        """Extract content from a ReadResourceResult."""
+        if hasattr(result, "contents"):
+            for content in result.contents:
+                if hasattr(content, "text"):
+                    import json
+
+                    try:
+                        return json.loads(content.text)
+                    except (json.JSONDecodeError, TypeError):
+                        return content.text
+                elif hasattr(content, "blob"):
+                    return content.blob
+        return result
+
+    @staticmethod
+    def _extract_prompt_result(result: Any) -> Any:
+        """Extract content from a GetPromptResult."""
+        if hasattr(result, "messages"):
+            messages = []
+            for msg in result.messages:
+                content = ""
+                if hasattr(msg, "content"):
+                    if hasattr(msg.content, "text"):
+                        content = msg.content.text
+                    else:
+                        content = str(msg.content)
+                messages.append({
+                    "role": getattr(msg, "role", "unknown"),
+                    "content": content,
+                })
+            return {"messages": messages}
         return result
 
     def _get_cache(self, key: str) -> Any | None:
@@ -275,4 +362,3 @@ class MCPClient:
 
     def _set_cache(self, key: str, value: Any) -> None:
         self._cache[key] = (value, time.monotonic())
-

@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api.routes.workflow import router as workflow_router
+from app.api.routes.mcp import router as mcp_router
 from app.api.websocket.stream import router as ws_router
 from app.core.config import settings
 
@@ -57,6 +58,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 app.include_router(workflow_router, prefix=settings.api_v1_prefix)
+app.include_router(mcp_router, prefix=settings.api_v1_prefix)
 app.include_router(ws_router)
 
 

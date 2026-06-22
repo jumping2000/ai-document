@@ -88,12 +88,35 @@ class WorkflowRunner:
             await self._emit(workflow_id, "state_change", {"state": ctx.state})
 
             # ENRICHMENT
+            mcp_conn_id = initial_input.get("mcp_connection_id")
+            mcp_url = None
+            mcp_api_key = None
+            mcp_tools = None
+            mcp_kb_id = None
+
+            if mcp_conn_id:
+                try:
+                    from app.db.models import MCPConnection
+                    mcp_conn = await self.db.get(MCPConnection, uuid.UUID(mcp_conn_id))
+                    if mcp_conn and mcp_conn.is_active:
+                        mcp_url = mcp_conn.url
+                        mcp_api_key = mcp_conn.api_key
+                        mcp_tools = mcp_conn.discovered_tools
+                        mcp_kb_id = mcp_conn.default_kb_id
+                        log.info("mcp_connection_loaded", name=mcp_conn.name, tools=len(mcp_tools or []), kb_id=mcp_kb_id)
+                except Exception as exc:
+                    log.warning("mcp_connection_load_failed", error=str(exc))
+
             enriched = await self._run_agent(
                 workflow_id,
                 "procurement",
                 lambda: self.procurement_agent.enrich(
                     requirements=ctx.requirements,
                     document_type=document_type,
+                    mcp_url=mcp_url,
+                    mcp_api_key=mcp_api_key,
+                    mcp_tools=mcp_tools,
+                    mcp_kb_id=mcp_kb_id,
                 ),
             )
             ctx.enriched_requirements = {**enriched.enriched, "_workflow_id": workflow_id}
@@ -256,7 +279,9 @@ class WorkflowRunner:
 
     async def _emit(self, workflow_id: str, event: str, data: dict[str, Any]) -> None:
         msg = {"event": event, "data": data}
-        for q in _event_queues.get(workflow_id, []):
+        queues = _event_queues.get(workflow_id, [])
+        log.info("emit_event", workflow_id=workflow_id, event_type=event, queues_count=len(queues))
+        for q in queues:
             await q.put(msg)
 
     async def _persist_state(self, workflow_id: str, from_state: WorkflowState | str, to_state: WorkflowState | str, trigger: str, payload: dict[str, Any] | None = None) -> None:

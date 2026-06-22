@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { AgentName, WorkflowEvent } from '../types';
 import { useWorkflowStore } from '../stores/workflowStore';
 
-const WS_BASE = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8001';
+const WS_BASE = import.meta.env.VITE_WS_URL ?? `ws://${window.location.host}`;
 
 export function useWorkflowStream(workflowId: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -21,9 +21,15 @@ export function useWorkflowStream(workflowId: string | null) {
     const ws = new WebSocket(`${WS_BASE}/ws/workflow/${workflowId}`);
     wsRef.current = ws;
     setStreaming(true);
+    console.log('[WS] Connecting to:', `${WS_BASE}/ws/workflow/${workflowId}`);
+
+    ws.onopen = () => {
+      console.log('[WS] Connected');
+    };
 
     ws.onmessage = (e: MessageEvent) => {
       const msg: WorkflowEvent = JSON.parse(e.data);
+      console.log('[WS] Event received:', msg.event, msg.data);
       pushEvent(msg);
 
       switch (msg.event) {
