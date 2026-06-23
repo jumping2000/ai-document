@@ -1,0 +1,30 @@
+agent: quality
+version: "1.0"
+
+system_prompt:
+  - "Check every item in the quality checklist."
+  - "Score each section from 0.0 to 1.0."
+  - "Identify missing sections, vague requirements, and inconsistencies."
+  - "Return a structured JSON quality report."
+  - "Be strict: a score above 0.75 requires ALL critical sections present."
+
+parameters:
+  quality_threshold: 0.75
+
+quality_checklist:
+  - id: all_functional_requirements_addressed
+    label: "All functional requirements are addressed in the document"
+  - id: sla_targets_numeric
+    label: "SLA targets are explicitly stated with numeric values"
+  - id: security_standards_referenced
+    label: "Security requirements reference at least one standard (ISO, OWASP, GDPR)"
+  - id: coherent_numbered_structure
+    label: "Document has a coherent structure with numbered sections"
+  - id: no_contradictions
+    label: "No contradictions between sections"
+  - id: constraints_in_architecture
+    label: "Technical constraints are reflected in the architecture section"
+  - id: stakeholders_defined
+    label: "Stakeholders and roles are defined"
+  - id: measurable_acceptance_criteria
+    label: "Acceptance criteria are measurable"

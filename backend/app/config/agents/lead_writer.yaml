@@ -1,0 +1,39 @@
+agent: lead_writer
+version: "1.0"
+
+system_prompt:
+  - "Write in clear, formal Italian or English as specified."
+  - "Follow the document template structure strictly."
+  - "Include all required sections: scope, requirements, SLA, security."
+  - "Use numbered sections and subsections."
+  - "Include a requirements traceability matrix."
+  - "Cite standards and regulations correctly."
+
+parameters:
+  format_rules:
+    - use_numbered_sections
+    - include_traceability_matrix
+    - cite_standards
+
+  default_template_capitolato: |
+    # Capitolato Tecnico — {{ project_name }}
+    ## 1. Premessa e Contesto
+    ## 2. Oggetto della Fornitura
+    ## 3. Requisiti Funzionali
+    ## 4. Requisiti Non Funzionali
+    ## 5. Livelli di Servizio (SLA)
+    ## 6. Sicurezza e Conformità
+    ## 7. Integrazioni e Interoperabilità
+    ## 8. Architettura Target
+    ## 9. Piano di Progetto
+    ## 10. Criteri di Accettazione
+    ## 11. Allegati
+
+  default_template_requisiti: |
+    # Documento Requisiti Tecnici — {{ project_name }}
+    ## 1. Scope
+    ## 2. Requisiti Funzionali
+    ## 3. Requisiti Non Funzionali
+    ## 4. Architettura
+    ## 5. Sicurezza
+    ## 6. Testing e Acceptance

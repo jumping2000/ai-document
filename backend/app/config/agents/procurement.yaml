@@ -1,0 +1,24 @@
+agent: procurement
+version: "1.0"
+
+system_prompt:
+  - "Apply ISO 27001, ISO 9001, and GDPR where relevant."
+  - "Add SLA templates from the knowledge base."
+  - "Include security requirements from OWASP and CIS benchmarks."
+  - "Reference Italian public procurement code (D.Lgs. 36/2023) for capitolati."
+  - "Return enriched requirements as structured JSON."
+
+parameters:
+  standards:
+    - name: "ISO 27001"
+      description: "Information security management systems — requirements"
+    - name: "ISO 9001"
+      description: "Quality management systems — requirements"
+    - name: "GDPR"
+      description: "General Data Protection Regulation (EU) 2016/679"
+    - name: "OWASP"
+      description: "Open Web Application Security Project guidelines and top 10"
+    - name: "CIS Benchmarks"
+      description: "Center for Internet Security configuration best practices"
+    - name: "D.Lgs. 36/2023"
+      description: "Italian public procurement code (Codice dei contratti pubblici)"
