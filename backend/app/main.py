@@ -4,8 +4,8 @@ AI Document Platform — FastAPI Application Entry Point
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import structlog
 import uvicorn
@@ -13,8 +13,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from app.api.routes.workflow import router as workflow_router
 from app.api.routes.mcp import router as mcp_router
+from app.api.routes.templates import router as templates_router
+from app.api.routes.workflow import router as workflow_router
 from app.api.websocket.stream import router as ws_router
 from app.core.config import settings
 
@@ -44,10 +45,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",   # Vite dev server
-        "http://localhost:3001",   # production frontend (standalone)
-        "http://localhost",        # Docker behind nginx (port 80)
-        "http://127.0.0.1",        # Docker behind nginx (alternate)
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3001",  # production frontend (standalone)
+        "http://localhost",  # Docker behind nginx (port 80)
+        "http://127.0.0.1",  # Docker behind nginx (alternate)
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -59,6 +60,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(workflow_router, prefix=settings.api_v1_prefix)
 app.include_router(mcp_router, prefix=settings.api_v1_prefix)
+app.include_router(templates_router, prefix=settings.api_v1_prefix)
 app.include_router(ws_router)
 
 
