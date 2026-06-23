@@ -22,26 +22,38 @@ class ValidationResult:
     confidence: float = 1.0
 
 
-# ── Mandatory field specs per document type ────────────────────────────────────
+# ── Fallback field specs (same values as template.yaml) ────────────────────────
 
-_CAPITOLATO_REQUIRED = [
-    ("project.title", "Titolo progetto"),
-    ("project.organization", "Organizzazione"),
-    ("scope.objectives", "Obiettivi progetto"),
-    ("functional_requirements", "Requisiti funzionali (≥3)"),
-    ("technical_requirements", "Requisiti tecnici (≥1)"),
-    ("sla.availability", "SLA disponibilità"),
-    ("security_compliance.standards", "Standard sicurezza"),
-    ("timeline.go_live", "Data go-live"),
-]
+_FALLBACK_REQUIRED: dict[str, list[dict[str, Any]]] = {
+    "capitolato": [
+        {"path": "project.title", "label": "Titolo progetto"},
+        {"path": "project.organization", "label": "Organizzazione"},
+        {"path": "scope.objectives", "label": "Obiettivi progetto"},
+        {"path": "functional_requirements", "label": "Requisiti funzionali", "min_items": 3},
+        {"path": "technical_requirements", "label": "Requisiti tecnici", "min_items": 1},
+        {"path": "sla.availability", "label": "SLA disponibilità"},
+        {"path": "security_compliance.standards", "label": "Standard sicurezza"},
+        {"path": "timeline.go_live", "label": "Data go-live"},
+    ],
+    "requisiti": [
+        {"path": "project.title", "label": "Titolo progetto"},
+        {"path": "scope.objectives", "label": "Obiettivi"},
+        {"path": "functional_requirements", "label": "Requisiti funzionali", "min_items": 3},
+        {"path": "technical_requirements", "label": "Requisiti tecnici", "min_items": 1},
+        {"path": "security_compliance", "label": "Requisiti sicurezza"},
+    ],
+}
 
-_REQUISITI_REQUIRED = [
-    ("project.title", "Titolo progetto"),
-    ("scope.objectives", "Obiettivi"),
-    ("functional_requirements", "Requisiti funzionali (≥3)"),
-    ("technical_requirements", "Requisiti tecnici (≥1)"),
-    ("security_compliance", "Requisiti sicurezza"),
-]
+
+def _get_required_fields(document_type: str) -> list[dict[str, Any]]:
+    """Load required_fields from template.yaml, with fallback to hard-coded."""
+    from app.core.template_config import load_template_config
+
+    config = load_template_config(document_type)
+    fields = config.get("required_fields")
+    if fields:
+        return fields
+    return _FALLBACK_REQUIRED.get(document_type, [])
 
 
 def _get_nested(data: dict, dotpath: str) -> Any:
@@ -66,27 +78,33 @@ def validate_requirements_completeness(
     Output: ValidationResult with issues and confidence score
     """
     result = ValidationResult(valid=True)
-    spec = _CAPITOLATO_REQUIRED if document_type == "capitolato" else _REQUISITI_REQUIRED
+    fields = _get_required_fields(document_type)
 
-    for dotpath, label in spec:
+    for field_spec in fields:
+        dotpath = field_spec["path"]
+        label = field_spec["label"]
         value = _get_nested(requirements, dotpath)
         if value is None or value == "" or value == [] or value == {}:
             result.missing_fields.append(label)
             result.issues.append(f"Campo obbligatorio mancante: {label}")
 
-    # Minimum counts
+    # Minimum counts from config min_items
     frs = requirements.get("functional_requirements", [])
-    if isinstance(frs, list) and len(frs) < 3:
+    fr_spec = next((f for f in fields if f["path"] == "functional_requirements"), None)
+    fr_min = fr_spec.get("min_items", 3) if fr_spec else 3
+    if isinstance(frs, list) and len(frs) < fr_min:
         result.issues.append(
-            f"Requisiti funzionali insufficienti: {len(frs)} di 3 minimi richiesti"
+            f"Requisiti funzionali insufficienti: {len(frs)} di {fr_min} minimi richiesti"
         )
 
     trs = requirements.get("technical_requirements", [])
-    if isinstance(trs, list) and len(trs) < 1:
-        result.issues.append("Almeno 1 requisito tecnico è obbligatorio")
+    tr_spec = next((f for f in fields if f["path"] == "technical_requirements"), None)
+    tr_min = tr_spec.get("min_items", 1) if tr_spec else 1
+    if isinstance(trs, list) and len(trs) < tr_min:
+        result.issues.append(f"Almeno {tr_min} requisito tecnico è obbligatorio")
 
     # Confidence: ratio of filled fields
-    total = len(spec)
+    total = len(fields)
     missing_count = len(result.missing_fields)
     result.confidence = round((total - missing_count) / total, 2) if total else 1.0
     result.valid = len(result.issues) == 0
@@ -114,34 +132,46 @@ def _parse_duration_hours(value: str) -> float | None:
     return hours
 
 
-def validate_sla_consistency(sla: dict[str, Any]) -> ValidationResult:
+def validate_sla_consistency(
+    sla: dict[str, Any],
+    document_type: str = "capitolato",
+) -> ValidationResult:
     """
     Validate SLA values are internally consistent.
 
-    Rules:
-    - Availability must be between 95% and 99.999%
-    - RTO must be > RPO (cannot recover faster than last backup)
-    - Response time must be a positive number
+    Rules loaded from template.yaml (sla_rules section), with fallback defaults.
     """
+    from app.core.template_config import load_template_config
+
+    config = load_template_config(document_type)
+    rules = config.get("sla_rules", {})
+
+    avail_range = rules.get("availability", {"min": 95.0, "max": 99.999})
+    avail_min = avail_range.get("min", 95.0)
+    avail_max = avail_range.get("max", 99.999)
+    check_rto_gt_rpo = rules.get("rto_gt_rpo", True)
+
     result = ValidationResult(valid=True)
 
     availability = sla.get("availability", "")
     if availability:
         try:
             pct = float(str(availability).rstrip("%"))
-            if pct < 95:
+            if pct < avail_min:
                 result.warnings.append(
-                    f"Disponibilità {availability} inferiore al minimo consigliato (95%)"
+                    f"Disponibilità {availability} inferiore al minimo consigliato ({avail_min}%)"
                 )
-            if pct > 99.999:
-                result.issues.append(f"Disponibilità {availability} non realistica (max 99.999%)")
+            if pct > avail_max:
+                result.issues.append(
+                    f"Disponibilità {availability} non realistica (max {avail_max}%)"
+                )
         except ValueError:
             result.warnings.append(f"Valore disponibilità non parsabile: {availability!r}")
 
     # RTO must be > RPO
     rto_str = sla.get("rto", "")
     rpo_str = sla.get("rpo", "")
-    if rto_str and rpo_str:
+    if rto_str and rpo_str and check_rto_gt_rpo:
         rto = _parse_duration_hours(str(rto_str))
         rpo = _parse_duration_hours(str(rpo_str))
         if rto is not None and rpo is not None:
