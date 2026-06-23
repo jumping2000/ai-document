@@ -10,6 +10,7 @@ from typing import Any
 import structlog
 from agno.agent import Agent
 
+from app.core.agent_config import load_agent_config
 from app.core.json_extract import extract_json
 from app.core.llm import get_model_adapter
 
@@ -196,16 +197,33 @@ class RequirementError(Exception):
 
 class RequirementAgent:
     def __init__(self) -> None:
-        self._agno = Agent(
-            name="requirement_analyst",
-            role="Senior IT Business Analyst",
-            description="Collect complete, structured requirements for IT document generation",
-            instructions=[
+        cfg = load_agent_config("requirement")
+        self._schema = cfg.get("output_schema", CANONICAL_SCHEMA) if cfg else CANONICAL_SCHEMA
+        self._critical_fields = (
+            cfg.get("critical_fields", CANONICAL_CRITICAL_FIELDS)
+            if cfg
+            else CANONICAL_CRITICAL_FIELDS
+        )
+        self._min_fr = cfg.get("parameters", {}).get("min_functional_requirements", 3) if cfg else 3
+        self._min_tr = cfg.get("parameters", {}).get("min_technical_requirements", 1) if cfg else 1
+        raw_prompt = cfg.get("system_prompt", "") if cfg else ""
+        if isinstance(raw_prompt, list):
+            instructions = raw_prompt
+        elif isinstance(raw_prompt, str) and raw_prompt.strip():
+            instructions = [line.strip() for line in raw_prompt.strip().split("\n") if line.strip()]
+        else:
+            instructions = [
                 "Extract all required fields from user input.",
                 "Prioritize functional requirements by business impact.",
                 "Identify implicit requirements the user may have overlooked.",
                 "Always output valid, complete JSON with no prose.",
-            ],
+            ]
+
+        self._agno = Agent(
+            name="requirement_analyst",
+            role="Senior IT Business Analyst",
+            description="Collect complete, structured requirements for IT document generation",
+            instructions=instructions,
             model=get_model_adapter(),
             markdown=False,
         )
@@ -220,7 +238,7 @@ class RequirementAgent:
 
         log.info("requirement.collect.start", workflow_id=workflow_id)
 
-        schema_json = _json.dumps(CANONICAL_SCHEMA, indent=2, ensure_ascii=False)
+        schema_json = _json.dumps(self._schema, indent=2, ensure_ascii=False)
         prompt = (
             "You are a senior IT Business Analyst.\n"
             f"Document type: {document_type}\n"
@@ -229,8 +247,8 @@ class RequirementAgent:
             f"{schema_json}\n\n"
             "Rules:\n"
             "- Use null for unknown string fields, [] for unknown lists.\n"
-            "- functional_requirements: at least 3 items.\n"
-            "- technical_requirements: at least 1 item.\n"
+            f"- functional_requirements: at least {self._min_fr} items.\n"
+            f"- technical_requirements: at least {self._min_tr} item.\n"
             "- All 'id' fields must be unique.\n"
             "- priority must be MUST, SHOULD, or COULD.\n"
             "- Do NOT include prose — only the JSON object."
@@ -244,7 +262,7 @@ class RequirementAgent:
 
         # Check critical fields using dot-path traversal
         missing: list[str] = []
-        for dotpath in CANONICAL_CRITICAL_FIELDS:
+        for dotpath in self._critical_fields:
             parts = dotpath.split(".")
             current: Any = canon
             for p in parts:
@@ -256,7 +274,7 @@ class RequirementAgent:
             if current is None or current == "" or current == [] or current == {}:
                 missing.append(dotpath)
 
-        confidence = max(0.0, 1.0 - len(missing) / len(CANONICAL_CRITICAL_FIELDS))
+        confidence = max(0.0, 1.0 - len(missing) / len(self._critical_fields))
 
         summary_resp = await self._agno.arun(
             f"Summarize in 3 sentences for a '{document_type}': {_json.dumps(canon, ensure_ascii=False)}"
