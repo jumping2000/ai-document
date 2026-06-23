@@ -1,0 +1,71 @@
+template_id: requisiti
+name: "Documento Requisiti Tecnici"
+description: "Specifica dei requisiti tecnici di progetto"
+language: it
+
+sections:
+  - id: introduzione
+    title: "Introduzione"
+    required: true
+  - id: requisiti_funzionali
+    title: "Requisiti Funzionali"
+    required: true
+  - id: requisiti_tecnici
+    title: "Requisiti Tecnici"
+    required: true
+  - id: sicurezza
+    title: "Sicurezza"
+    required: true
+  - id: architettura
+    title: "Architettura"
+    required: false
+  - id: integrazione
+    title: "Integrazione"
+    required: false
+
+required_fields:
+  - path: "project.title"
+    label: "Titolo Progetto"
+  - path: "scope.objectives"
+    label: "Obiettivi"
+  - path: "functional_requirements"
+    label: "Requisiti Funzionali"
+    min_items: 3
+  - path: "technical_requirements"
+    label: "Requisiti Tecnici"
+    min_items: 1
+  - path: "security_compliance"
+    label: "Requisiti Sicurezza"
+
+sla_rules:
+  availability:
+    min: 95.0
+    max: 99.999
+    unit: percent
+  rto_gt_rpo: true
+
+quality_checks:
+  - id: functional_requirements_addressed
+    label: "Requisiti funzionali indirizzati"
+    enabled: true
+  - id: sla_targets_stated
+    label: "Target SLA definiti"
+    enabled: true
+  - id: security_references
+    label: "Riferimenti a standard di sicurezza"
+    enabled: true
+  - id: coherent_structure
+    label: "Struttura coerente"
+    enabled: true
+  - id: no_contradictions
+    label: "Nessuna contraddizione"
+    enabled: true
+  - id: constraints_reflected
+    label: "Vincoli riflessi nel documento"
+    enabled: true
+  - id: stakeholders_defined
+    label: "Stakeholder definiti"
+    enabled: true
+  - id: acceptance_criteria
+    label: "Criteri di accettazione misurabili"
+    enabled: true

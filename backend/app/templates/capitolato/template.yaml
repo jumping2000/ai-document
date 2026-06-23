@@ -1,0 +1,86 @@
+template_id: capitolato
+name: "Capitolato Tecnico"
+description: "Capitolato tecnico per gara d'appalto"
+language: it
+
+sections:
+  - id: premessa
+    title: "Premessa e Contesto"
+    required: true
+  - id: oggetto
+    title: "Oggetto dell'Appalto"
+    required: true
+  - id: requisiti_funzionali
+    title: "Requisiti Funzionali"
+    required: true
+  - id: requisiti_tecnici
+    title: "Requisiti Tecnici e Architetturali"
+    required: true
+  - id: sicurezza
+    title: "Sicurezza"
+    required: true
+  - id: sla
+    title: "SLA"
+    required: true
+  - id: integrazioni
+    title: "Integrazioni"
+    required: false
+  - id: piano
+    title: "Piano"
+    required: false
+  - id: criteri
+    title: "Criteri"
+    required: false
+
+required_fields:
+  - path: "project.title"
+    label: "Titolo Progetto"
+  - path: "project.organization"
+    label: "Organizzazione"
+  - path: "scope.objectives"
+    label: "Obiettivi"
+  - path: "functional_requirements"
+    label: "Requisiti Funzionali"
+    min_items: 3
+  - path: "technical_requirements"
+    label: "Requisiti Tecnici"
+    min_items: 1
+  - path: "sla.availability"
+    label: "Disponibilità SLA"
+  - path: "security_compliance.standards"
+    label: "Standard Sicurezza"
+  - path: "timeline.go_live"
+    label: "Data Go-Live"
+
+sla_rules:
+  availability:
+    min: 95.0
+    max: 99.999
+    unit: percent
+  rto_gt_rpo: true
+
+quality_checks:
+  - id: functional_requirements_addressed
+    label: "Requisiti funzionali indirizzati"
+    enabled: true
+  - id: sla_targets_stated
+    label: "Target SLA definiti"
+    enabled: true
+  - id: security_references
+    label: "Riferimenti a standard di sicurezza"
+    enabled: true
+  - id: coherent_structure
+    label: "Struttura coerente"
+    enabled: true
+  - id: no_contradictions
+    label: "Nessuna contraddizione"
+    enabled: true
+  - id: constraints_reflected
+    label: "Vincoli riflessi nel documento"
+    enabled: true
+  - id: stakeholders_defined
+    label: "Stakeholder definiti"
+    enabled: true
+  - id: acceptance_criteria
+    label: "Criteri di accettazione misurabili"
+    enabled: true
