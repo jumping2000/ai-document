@@ -11,6 +11,7 @@ from typing import Any
 import structlog
 from agno.agent import Agent
 
+from app.core.agent_config import load_agent_config
 from app.core.json_extract import extract_json
 from app.core.llm import get_model_adapter
 from app.skills.retrieval.retrieval_skill import RetrievalSkill
@@ -28,17 +29,28 @@ class ProcurementResult:
 class ProcurementAgent:
     def __init__(self) -> None:
         self._retrieval = RetrievalSkill()
-        self._agno = Agent(
-            name="procurement_specialist",
-            role="IT Procurement Specialist",
-            description="Enrich requirements with standards, regulations, and best practices",
-            instructions=[
+        cfg = load_agent_config("procurement")
+        system_prompt = cfg.get("system_prompt", "")
+        if isinstance(system_prompt, list):
+            instructions = [s.strip() for s in system_prompt if s.strip()]
+        elif isinstance(system_prompt, str) and system_prompt.strip():
+            instructions = [
+                line.strip() for line in system_prompt.strip().split("\n") if line.strip()
+            ]
+        else:
+            instructions = [
                 "Apply ISO 27001, ISO 9001, and GDPR where relevant.",
                 "Add SLA templates from the knowledge base.",
                 "Include security requirements from OWASP and CIS benchmarks.",
                 "Reference Italian public procurement code (D.Lgs. 36/2023) for capitolati.",
                 "Return enriched requirements as structured JSON.",
-            ],
+            ]
+
+        self._agno = Agent(
+            name="procurement_specialist",
+            role="IT Procurement Specialist",
+            description="Enrich requirements with standards, regulations, and best practices",
+            instructions=instructions,
             model=get_model_adapter(),
             markdown=False,
         )

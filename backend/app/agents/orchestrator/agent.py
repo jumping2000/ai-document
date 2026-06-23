@@ -8,6 +8,8 @@ import time
 import structlog
 from agno.agent import Agent
 
+from app.core.agent_config import load_agent_config
+from app.core.config import settings
 from app.core.json_extract import extract_json
 from app.core.llm import get_model_adapter
 from app.workflows.state_machine.machine import (
@@ -50,16 +52,32 @@ class OrchestratorAgent:
         self.lead_writer_agent = LeadWriterAgent()
         self.quality_agent = QualityAgent()
 
-        self._agno = Agent(
-            name="orchestrator",
-            role="Workflow Orchestrator",
-            description="Ensure document generation workflow completes successfully",
-            instructions=[
+        cfg = load_agent_config("orchestrator")
+        system_prompt = cfg.get("system_prompt", "")
+        if isinstance(system_prompt, list):
+            instructions = [s.strip() for s in system_prompt if s.strip()]
+        elif isinstance(system_prompt, str) and system_prompt.strip():
+            instructions = [
+                line.strip() for line in system_prompt.strip().split("\n") if line.strip()
+            ]
+        else:
+            instructions = [
                 "Coordinate a multi-agent workflow for IT document generation.",
                 "Validate each step output is complete before proceeding.",
                 "Decide whether quality issues require re-writing or re-enrichment.",
                 "Never proceed with incomplete or contradictory requirements.",
-            ],
+            ]
+        self._max_retries = (
+            cfg.get("parameters", {}).get("max_retries", settings.workflow_max_retries)
+            if cfg
+            else settings.workflow_max_retries
+        )
+
+        self._agno = Agent(
+            name="orchestrator",
+            role="Workflow Orchestrator",
+            description="Ensure document generation workflow completes successfully",
+            instructions=instructions,
             model=get_model_adapter(),
             markdown=True,
         )

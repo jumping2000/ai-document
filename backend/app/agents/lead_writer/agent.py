@@ -3,15 +3,17 @@ Lead Writer Agent — generates final documents from enriched requirements.
 Input  : enriched_requirements, document_type, quality_issues (for revisions)
 Output : WriterResult(markdown, sections)
 """
-import structlog
+
 from dataclasses import dataclass
 from typing import Any
 
+import structlog
 from agno.agent import Agent
-from app.core.llm import get_model_adapter
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from app.core.agent_config import load_agent_config
 from app.core.config import settings
+from app.core.llm import get_model_adapter
 from app.skills.export.export_skill import ExportSkill
 
 log = structlog.get_logger(__name__)
@@ -34,18 +36,30 @@ class LeadWriterAgent:
             lstrip_blocks=True,
         )
         self._exporter = ExportSkill()
-        self._agno = Agent(
-            name="lead_writer",
-            role="Senior Technical Writer",
-            description="Produce complete, professional IT procurement documents",
-            instructions=[
+        cfg = load_agent_config("lead_writer")
+        system_prompt = cfg.get("system_prompt", "")
+        if isinstance(system_prompt, list):
+            instructions = [s.strip() for s in system_prompt if s.strip()]
+        elif isinstance(system_prompt, str) and system_prompt.strip():
+            instructions = [
+                line.strip() for line in system_prompt.strip().split("\n") if line.strip()
+            ]
+        else:
+            instructions = [
                 "Write in clear, formal Italian or English as specified.",
                 "Follow the document template structure strictly.",
                 "Include all required sections: scope, requirements, SLA, security.",
                 "Use numbered sections and subsections.",
                 "Include a requirements traceability matrix.",
                 "Cite standards and regulations correctly.",
-            ],
+            ]
+        self._default_templates = cfg.get("parameters", {}) if cfg else {}
+
+        self._agno = Agent(
+            name="lead_writer",
+            role="Senior Technical Writer",
+            description="Produce complete, professional IT procurement documents",
+            instructions=instructions,
             model=get_model_adapter(),
             markdown=True,
         )
@@ -61,7 +75,7 @@ class LeadWriterAgent:
         revision_note = ""
         if quality_issues:
             revision_note = (
-                f"\n\nIMPORTANT — Fix these issues from the quality review:\n"
+                "\n\nIMPORTANT — Fix these issues from the quality review:\n"
                 + "\n".join(f"- {i}" for i in quality_issues)
             )
 
@@ -70,7 +84,10 @@ class LeadWriterAgent:
             template = self._jinja.get_template(template_name)
             template_content = template.render(**enriched_requirements)
         except Exception:
-            template_content = _default_template(document_type)
+            default_key = f"default_template_{document_type}"
+            template_content = self._default_templates.get(
+                default_key, _default_template(document_type)
+            )
 
         prompt = (
             f"Generate a complete '{document_type}' document.\n"
@@ -83,9 +100,7 @@ class LeadWriterAgent:
         markdown = response.content.strip()
 
         sections = [
-            line.lstrip("#").strip()
-            for line in markdown.splitlines()
-            if line.startswith("## ")
+            line.lstrip("#").strip() for line in markdown.splitlines() if line.startswith("## ")
         ]
 
         project = enriched_requirements.get("project", {})
@@ -99,8 +114,9 @@ class LeadWriterAgent:
         pdf_path = await self._exporter.export_pdf(markdown, title, workflow_id, document_type)
 
         log.info("writer.write.done", sections=len(sections), docx=docx_path)
-        return WriterResult(markdown=markdown, sections=sections,
-                            docx_path=docx_path, pdf_path=pdf_path)
+        return WriterResult(
+            markdown=markdown, sections=sections, docx_path=docx_path, pdf_path=pdf_path
+        )
 
 
 def _default_template(document_type: str) -> str:
