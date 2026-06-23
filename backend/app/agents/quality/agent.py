@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 import structlog
 from agno.agent import Agent
 
+from app.core.agent_config import load_agent_config
 from app.core.config import settings
 from app.core.json_extract import extract_json
 from app.core.llm import get_model_adapter
@@ -40,17 +41,38 @@ class QualityReport:
 
 class QualityAgent:
     def __init__(self) -> None:
-        self._agno = Agent(
-            name="quality_reviewer",
-            role="Senior IT Document Quality Reviewer",
-            description="Ensure documents meet professional procurement standards",
-            instructions=[
+        cfg = load_agent_config("quality")
+        self._checklist = (
+            [c["label"] for c in cfg.get("quality_checklist", [])]
+            if cfg.get("quality_checklist")
+            else QUALITY_CHECKLIST
+        )
+        self._threshold = (
+            cfg.get("parameters", {}).get("quality_threshold", settings.workflow_quality_threshold)
+            if cfg
+            else settings.workflow_quality_threshold
+        )
+        system_prompt = cfg.get("system_prompt", "")
+        if isinstance(system_prompt, list):
+            instructions = [s.strip() for s in system_prompt if s.strip()]
+        elif isinstance(system_prompt, str) and system_prompt.strip():
+            instructions = [
+                line.strip() for line in system_prompt.strip().split("\n") if line.strip()
+            ]
+        else:
+            instructions = [
                 "Check every item in the quality checklist.",
                 "Score each section from 0.0 to 1.0.",
                 "Identify missing sections, vague requirements, and inconsistencies.",
                 "Return a structured JSON quality report.",
                 "Be strict: a score above 0.75 requires ALL critical sections present.",
-            ],
+            ]
+
+        self._agno = Agent(
+            name="quality_reviewer",
+            role="Senior IT Document Quality Reviewer",
+            description="Ensure documents meet professional procurement standards",
+            instructions=instructions,
             model=get_model_adapter(),
             markdown=False,
         )
@@ -67,7 +89,7 @@ class QualityAgent:
             f"Review this '{document_type}' document against requirements.\n\n"
             f"DOCUMENT:\n{content[:8000]}\n\n"
             f"ORIGINAL REQUIREMENTS: {requirements}\n\n"
-            f"CHECKLIST:\n" + "\n".join(f"- {c}" for c in QUALITY_CHECKLIST) + "\n\n"
+            f"CHECKLIST:\n" + "\n".join(f"- {c}" for c in self._checklist) + "\n\n"
             'Return JSON: {"score": float(0-1), "passed": bool, '
             '"issues": [str], "suggestions": [str], '
             '"section_scores": {section: float}, "needs_enrichment": bool}'
@@ -86,7 +108,7 @@ class QualityAgent:
                     needs_enrichment=bool(data.get("needs_enrichment", False)),
                 )
                 # Enforce threshold
-                if report.score < settings.workflow_quality_threshold:
+                if report.score < self._threshold:
                     report.passed = False
                 log.info("quality.review.done", score=report.score, passed=report.passed)
                 return report
