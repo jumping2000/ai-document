@@ -49,7 +49,7 @@ def _make_data(*, title: str = "Test ERP", fr_count: int = 0) -> dict:
         "scope": {"objectives": ["Obj 1"], "in_scope": ["Item A"], "out_of_scope": ["Item B"]},
         "functional_requirements": frs,
         "technical_requirements": [],
-        "sla": {"availability": "99.9%"},
+        "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
         "security_compliance": {"standards": ["ISO 27001"]},
         "integrations": [],
         "timeline": {"go_live": "2027-01-01"},

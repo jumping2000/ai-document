@@ -47,11 +47,9 @@ class TestNormalizePassthrough:
             ],
             "technical_requirements": [{"id": "TR-001", "category": "Hosting", "description": "t"}],
             "sla": {
-                "availability": "99.9%",
-                "rto": "4h",
-                "rpo": "1h",
-                "response_time": "<3s",
-                "custom_kpis": [],
+                "K1": "99%",
+                "K2": "1%",
+                "K3": "0",
             },
             "security_compliance": {
                 "standards": ["ISO 27001"],
@@ -71,7 +69,7 @@ class TestNormalizePassthrough:
         assert result["project"]["title"] == "My Project"
         assert result["scope"]["objectives"] == ["Obj1"]
         assert result["functional_requirements"][0]["id"] == "FR-001"
-        assert result["sla"]["availability"] == "99.9%"
+        assert result["sla"]["K1"] == "99%"
         assert result["security_compliance"]["standards"] == ["ISO 27001"]
         assert result["timeline"]["go_live"] == "2026-12-01"
         assert result["integrations"][0]["system"] == "CRM"
@@ -91,7 +89,7 @@ class TestNormalizeFlatToNested:
             "security_requirements": ["MFA obbligatorio", "AES-256"],
             "budget_range": "€150.000",
             "target_architecture": "Microservices on K8s",
-            "sla": "99.5%",
+            "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
             "kpi": ["Uptime", "Response < 2s"],
             "compliance": ["GDPR", "ISO 27001"],
             "stakeholders": ["CIO", "PM", "DPO"],
@@ -121,10 +119,9 @@ class TestNormalizeFlatToNested:
         # target_architecture → appended as TR
         tr_ids = [tr["id"] for tr in result["technical_requirements"]]
         assert "TR-ARCH-001" in tr_ids
-        # sla → sla.availability
-        assert result["sla"]["availability"] == "99.5%"
-        # kpi → sla.custom_kpis
-        assert result["sla"]["custom_kpis"] == ["Uptime", "Response < 2s"]
+        # sla (nested dict preserved)
+        assert result["sla"]["K1"] == "99%"
+        assert result["sla"]["K2"] == "1%"
         # compliance → security_compliance.standards
         assert result["security_compliance"]["standards"] == ["GDPR", "ISO 27001"]
         # stakeholders (list of strings) → list of dicts

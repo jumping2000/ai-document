@@ -22,6 +22,7 @@ from app.core.template_config import (
     invalidate_template_cache,
     load_template_config,
 )
+from app.skills.validation.validation_skill import validate_requirements_completeness
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -47,6 +48,13 @@ class TemplateConfigUpdate(BaseModel):
 
 
 def _config_path(document_type: str) -> Path:
+    """Writable override path (documents volume)."""
+    override_dir = Path(settings.documents_base_path) / "template_overrides" / document_type
+    return override_dir / "template.yaml"
+
+
+def _default_config_path(document_type: str) -> Path:
+    """Read-only default path (app source)."""
     return TEMPLATES_DIR / document_type / "template.yaml"
 
 
@@ -139,3 +147,38 @@ async def reset_template_config(document_type: str) -> dict[str, str]:
 
     log.info("template.config.reset", doc_type=document_type)
     return {"status": "reset", "document_type": document_type}
+
+
+# ── Validation Preview ────────────────────────────────────────────────────────
+
+
+class ValidatePreviewRequest(BaseModel):
+    """Body for validation preview."""
+
+    requirements: dict[str, Any]
+
+
+@router.post("/{document_type}/validate-preview")
+async def validate_preview(
+    document_type: str,
+    body: ValidatePreviewRequest,
+) -> dict[str, Any]:
+    """
+    Run validation on sample requirements without starting a workflow.
+    Returns ValidationResult: valid, issues, missing_fields, warnings, confidence.
+    """
+    types = _discover_types()
+    if document_type not in types:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown document type: {document_type}. Available: {types}",
+        )
+
+    result = validate_requirements_completeness(body.requirements, document_type)
+    return {
+        "valid": result.valid,
+        "issues": result.issues,
+        "missing_fields": result.missing_fields,
+        "warnings": result.warnings,
+        "confidence": result.confidence,
+    }

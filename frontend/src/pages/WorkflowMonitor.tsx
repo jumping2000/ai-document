@@ -4,7 +4,7 @@ import {
   FileText, Zap, CheckCircle2, XCircle, Clock,
   ChevronRight, Download, BarChart3, RefreshCw,
   AlertTriangle, Layers, Brain, Search, PenTool, Shield,
-  Database
+  Database, FilePlus, Activity, ClipboardCheck, Settings
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,6 +13,7 @@ import { useWorkflowStream } from '../hooks/useWorkflowStream';
 import ThemeSwitcher from '../components/ThemeSwitcher';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import MCPSettings from './MCPSettings';
+import TemplateSettings from './TemplateSettings';
 import { useTranslation } from '../i18n/LanguageContext';
 import type { AgentName, DocumentType, WorkflowStateEnum } from '../types';
 
@@ -189,9 +190,10 @@ function QualityGauge({ score, passed }: { score: number; passed: boolean }) {
 
 export default function WorkflowMonitorPage() {
   const { t } = useTranslation();
-  const [view, setView] = useState<'form' | 'monitor' | 'document' | 'knowledge'>('form');
+  const [view, setView] = useState<'form' | 'monitor' | 'document' | 'knowledge' | 'templates'>('form');
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null);
-  const [docPreview, setDocPreview] = useState<string>('');
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  // documentContent is now in the store
   const [mcpConnections, setMcpConnections] = useState<{id: string; name: string}[]>([]);
   const [selectedMcp, setSelectedMcp] = useState<string>('');
   const [formData, setFormData] = useState({
@@ -204,8 +206,11 @@ export default function WorkflowMonitorPage() {
     activeWorkflow,
     agentStatuses,
     qualityReport,
+    validationResult,
+    documentContent,
     events,
     isStreaming,
+    setActiveWorkflow,
     reset,
   } = useWorkflowStore();
 
@@ -233,6 +238,14 @@ export default function WorkflowMonitorPage() {
       }),
     });
     const data = await res.json();
+    setActiveWorkflow({
+      workflow_id: data.workflow_id,
+      state: data.state ?? 'INIT',
+      document_type: formData.document_type,
+      title: formData.title,
+      retry_count: 0,
+      quality_score: null,
+    });
     setActiveWorkflowId(data.workflow_id);
     setView('monitor');
   }
@@ -281,7 +294,7 @@ export default function WorkflowMonitorPage() {
 
       {/* ── Nav tabs ───────────────────────────────────────────────────────── */}
       <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 flex gap-0">
-        {(['form', 'monitor', 'document', 'knowledge'] as const).map((tab) => (
+        {(['form', 'monitor', 'document', 'knowledge', 'templates'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setView(tab)}
@@ -293,8 +306,12 @@ export default function WorkflowMonitorPage() {
                 : 'border-transparent text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400'}
             `}
           >
+            {tab === 'form' && <FilePlus size={12} />}
+            {tab === 'monitor' && <Activity size={12} />}
+            {tab === 'document' && <FileText size={12} />}
             {tab === 'knowledge' && <Database size={12} />}
-            {tab === 'form' ? t('nav.new') : tab === 'monitor' ? t('nav.monitor') : tab === 'document' ? t('nav.document') : t('nav.knowledge')}
+            {tab === 'templates' && <Settings size={12} />}
+            {tab === 'form' ? t('nav.new') : tab === 'monitor' ? t('nav.monitor') : tab === 'document' ? t('nav.document') : tab === 'knowledge' ? t('nav.knowledge') : t('nav.templates')}
           </button>
         ))}
       </nav>
@@ -326,8 +343,8 @@ export default function WorkflowMonitorPage() {
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-2">
                     {t('form.documentType')}
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {(['capitolato', 'requisiti'] as DocumentType[]).map((docType) => (
+                  <div className="grid grid-cols-3 gap-3">
+                    {(['capitolato', 'requisiti', 'documento'] as DocumentType[]).map((docType) => (
                       <button
                         key={docType}
                         onClick={() => setFormData(p => ({ ...p, document_type: docType }))}
@@ -339,12 +356,14 @@ export default function WorkflowMonitorPage() {
                         `}
                       >
                         <div className="text-sm font-bold mb-1">
-                          {docType === 'capitolato' ? t('form.capitolato') : t('form.requisiti')}
+                          {docType === 'capitolato' ? t('form.capitolato') : docType === 'requisiti' ? t('form.requisiti') : t('form.documento')}
                         </div>
                         <div className="text-[10px] opacity-70">
                           {docType === 'capitolato'
                             ? t('form.capitolatoDesc')
-                            : t('form.requisitiDesc')}
+                            : docType === 'requisiti'
+                            ? t('form.requisitiDesc')
+                            : t('form.documentoDesc')}
                         </div>
                       </button>
                     ))}
@@ -451,25 +470,26 @@ export default function WorkflowMonitorPage() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Agent grid */}
-                <div className="lg:col-span-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-4">
-                    {t('monitor.agents')}
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {(Object.keys(AGENT_META) as AgentName[]).map((name) => (
-                      <AgentCard
-                        key={name}
-                        name={name}
-                        status={agentStatuses[name]?.status ?? 'idle'}
-                        duration_ms={agentStatuses[name]?.duration_ms}
-                      />
-                    ))}
+                {/* Left column: Agent AI + Quality + Validation */}
+                <div className="lg:col-span-2 space-y-6">
+                  {/* Agent grid */}
+                  <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-4">
+                      {t('monitor.agents')}
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {(Object.keys(AGENT_META) as AgentName[]).map((name) => (
+                        <AgentCard
+                          key={name}
+                          name={name}
+                          status={agentStatuses[name]?.status ?? 'idle'}
+                          duration_ms={agentStatuses[name]?.duration_ms}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                {/* Quality + events */}
-                <div className="space-y-4">
+                  {/* Quality gauge */}
                   {qualityReport && (
                     <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5">
                       <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-4">
@@ -498,12 +518,68 @@ export default function WorkflowMonitorPage() {
                     </div>
                   )}
 
-                  {/* Event log */}
-                  <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4">
+                  {/* Validation Result */}
+                  {validationResult && (
+                    <div className={`border rounded-2xl p-5 ${
+                      validationResult.valid
+                        ? 'bg-emerald-50 dark:bg-emerald-500/5 border-emerald-200 dark:border-emerald-500/30'
+                        : 'bg-red-50 dark:bg-red-500/5 border-red-200 dark:border-red-500/30'
+                    }`}>
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-3 flex items-center gap-2">
+                        <ClipboardCheck size={12} />
+                        {t('monitor.validation')}
+                      </h3>
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                          validationResult.valid
+                            ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400'
+                        }`}>
+                          {validationResult.valid ? t('monitor.validationPassed') : t('monitor.validationFailed')}
+                        </span>
+                        <span className="text-[10px] text-zinc-500">
+                          {t('template.confidence')}: {Math.round(validationResult.confidence * 100)}%
+                        </span>
+                      </div>
+                      {validationResult.missing_fields.length > 0 && (
+                        <div className="text-[10px] text-red-600 dark:text-red-400 mb-2">
+                          <span className="font-bold">{t('template.missingFields')}:</span>{' '}
+                          {validationResult.missing_fields.join(', ')}
+                        </div>
+                      )}
+                      {validationResult.issues.length > 0 && (
+                        <div className="space-y-1 mb-2">
+                          <span className="text-[10px] font-bold text-zinc-500">{t('template.issues')}:</span>
+                          {validationResult.issues.map((issue, i) => (
+                            <div key={i} className="text-[10px] text-red-600 dark:text-red-400 flex items-start gap-1">
+                              <span className="mt-0.5">•</span>
+                              <span>{issue}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {validationResult.warnings.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-zinc-500">{t('template.warnings')}:</span>
+                          {validationResult.warnings.map((w, i) => (
+                            <div key={i} className="text-[10px] text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                              <span className="mt-0.5">⚠</span>
+                              <span>{w}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right column: Event log */}
+                <div className="lg:col-span-1">
+                  <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 sticky top-6">
                     <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-500 mb-3">
                       {t('monitor.eventLog')}
                     </h3>
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                    <div className="space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto">
                       {events.slice(-20).reverse().map((ev, i) => (
                         <div key={i} className={`
                           flex flex-col gap-1 text-[10px] p-2 rounded-lg
@@ -519,24 +595,26 @@ export default function WorkflowMonitorPage() {
                               ${ev.event === 'completed' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
                                 ev.event === 'failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400' :
                                 ev.event === 'validation_failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400' :
+                                ev.event === 'validation_result' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
                                 ev.event === 'state_change' ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' :
                                 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500'}
                             `}>
-                              {ev.event === 'validation_failed' ? 'VALIDATION' : ev.event}
+                              {ev.event === 'validation_failed' ? 'VALIDATION' : ev.event === 'validation_result' ? 'VALIDATION' : ev.event}
                             </span>
-                            {ev.event !== 'validation_failed' && ev.event !== 'failed' && (
+                            {!['validation_failed', 'failed', 'validation_result'].includes(ev.event) && (
                               <span className="text-zinc-500 dark:text-zinc-600 truncate">
                                 {JSON.stringify(ev.data).slice(0, 40)}
                               </span>
                             )}
                           </div>
                           {/* Show validation details */}
-                          {(ev.event === 'validation_failed' || ev.event === 'failed') && ev.data && (
+                          {(ev.event === 'validation_failed' || ev.event === 'failed' || ev.event === 'validation_result') && ev.data && (
                             <div className="ml-[4.5rem] space-y-1">
                               {(() => {
                                 const data = ev.data as {
                                   issues?: string[];
                                   missing_fields?: string[];
+                                  warnings?: string[];
                                   error?: string;
                                   score?: number;
                                   confidence?: number;
@@ -554,8 +632,19 @@ export default function WorkflowMonitorPage() {
                                         Campi mancanti: {data.missing_fields.join(', ')}
                                       </div>
                                     )}
+                                    {data.warnings && Array.isArray(data.warnings) && data.warnings.map((w: string, j: number) => (
+                                      <div key={j} className="text-[9px] text-amber-500 dark:text-amber-400 flex items-start gap-1">
+                                        <span>⚠</span>
+                                        <span>{w}</span>
+                                      </div>
+                                    ))}
                                     {data.error && (
                                       <div className="text-red-600 dark:text-red-400">{data.error}</div>
+                                    )}
+                                    {data.confidence !== undefined && data.confidence !== null && (
+                                      <div className="text-[9px] text-zinc-500">
+                                        Confidenza: {Math.round(data.confidence * 100)}%
+                                      </div>
                                     )}
                                     {data.score !== undefined && data.score !== null && (
                                       <div className="text-[9px] text-zinc-500">
@@ -618,23 +707,104 @@ export default function WorkflowMonitorPage() {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-black tracking-tight text-zinc-900 dark:text-white">{t('document.title')}</h2>
                 <div className="flex gap-2">
-                  <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700
-                                     text-xs font-bold text-zinc-700 dark:text-white rounded-xl transition-colors">
+                  <button
+                    onClick={async () => {
+                      if (!activeWorkflowId) return;
+                      try {
+                        const res = await fetch(`${API_BASE}/workflow/${activeWorkflowId}/export/docx`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ content: documentContent }),
+                        });
+                        if (!res.ok) {
+                          const err = await res.json().catch(() => ({ detail: 'Export failed' }));
+                          throw new Error(err.detail || 'Export failed');
+                        }
+                        const data = await res.json();
+                        const dlUrl = `${API_BASE.replace('/api/v1', '')}${data.download_url}`;
+                        const dlRes = await fetch(dlUrl);
+                        if (!dlRes.ok) throw new Error('Download failed');
+                        const blob = await dlRes.blob();
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = `${activeWorkflowId.slice(0, 8)}.docx`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(a.href);
+                        setDownloadError(null);
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : 'Export failed';
+                        console.error('DOCX export failed:', err);
+                        setDownloadError(msg);
+                      }
+                    }}
+                    disabled={!!downloadError}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700
+                               disabled:opacity-50 text-xs font-bold text-zinc-700 dark:text-white rounded-xl transition-colors"
+                  >
                     <Download size={12} />
                     {t('document.downloadDocx')}
                   </button>
-                  <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700
-                                     text-xs font-bold text-zinc-700 dark:text-white rounded-xl transition-colors">
+                  <button
+                    onClick={async () => {
+                      if (!activeWorkflowId) return;
+                      try {
+                        const res = await fetch(`${API_BASE}/workflow/${activeWorkflowId}/export/pdf`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ content: documentContent }),
+                        });
+                        if (!res.ok) {
+                          const err = await res.json().catch(() => ({ detail: 'Export failed' }));
+                          throw new Error(err.detail || 'Export failed');
+                        }
+                        const data = await res.json();
+                        const dlUrl = `${API_BASE.replace('/api/v1', '')}${data.download_url}`;
+                        const dlRes = await fetch(dlUrl);
+                        if (!dlRes.ok) throw new Error('Download failed');
+                        const blob = await dlRes.blob();
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = `${activeWorkflowId.slice(0, 8)}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(a.href);
+                        setDownloadError(null);
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : 'Export failed';
+                        console.error('PDF export failed:', err);
+                        setDownloadError(msg);
+                      }
+                    }}
+                    disabled={!!downloadError}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700
+                               disabled:opacity-50 text-xs font-bold text-zinc-700 dark:text-white rounded-xl transition-colors"
+                  >
                     <Download size={12} />
                     {t('document.downloadPdf')}
                   </button>
                 </div>
               </div>
+              {downloadError && (
+                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
+                  <span>⚠ {downloadError}</span>
+                  <button onClick={() => setDownloadError(null)} className="text-red-500 hover:text-red-700 dark:hover:text-red-300 font-bold">✕</button>
+                </div>
+              )}
               <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8">
-                {docPreview ? (
-                  <div className="prose dark:prose-invert prose-sm max-w-none">
+                {documentContent ? (
+                  <div className="prose prose-sm max-w-none
+                                  prose-headings:text-zinc-900 dark:prose-headings:text-zinc-100
+                                  prose-p:text-zinc-800 dark:prose-p:text-zinc-200
+                                  prose-li:text-zinc-800 dark:prose-li:text-zinc-200
+                                  prose-strong:text-zinc-900 dark:prose-strong:text-white
+                                  prose-a:text-indigo-600 dark:prose-a:text-indigo-400
+                                  prose-code:text-zinc-800 dark:prose-code:text-zinc-200
+                                  prose-table:text-zinc-800 dark:prose-table:text-zinc-200">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {docPreview}
+                      {documentContent}
                     </ReactMarkdown>
                   </div>
                 ) : (
@@ -657,6 +827,18 @@ export default function WorkflowMonitorPage() {
               exit={{ opacity: 0, y: -16 }}
             >
               <MCPSettings />
+            </motion.div>
+          )}
+
+          {/* ── TEMPLATES ─────────────────────────────────────────────────── */}
+          {view === 'templates' && (
+            <motion.div
+              key="templates"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+            >
+              <TemplateSettings />
             </motion.div>
           )}
 

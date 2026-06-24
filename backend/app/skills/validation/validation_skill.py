@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.app_config import app_cfg
+
 
 @dataclass
 class ValidationResult:
@@ -31,7 +33,7 @@ _FALLBACK_REQUIRED: dict[str, list[dict[str, Any]]] = {
         {"path": "scope.objectives", "label": "Obiettivi progetto"},
         {"path": "functional_requirements", "label": "Requisiti funzionali", "min_items": 3},
         {"path": "technical_requirements", "label": "Requisiti tecnici", "min_items": 1},
-        {"path": "sla.availability", "label": "SLA disponibilità"},
+        {"path": "sla.K1", "label": "Qualità del Codice"},
         {"path": "security_compliance.standards", "label": "Standard sicurezza"},
         {"path": "timeline.go_live", "label": "Data go-live"},
     ],
@@ -41,6 +43,13 @@ _FALLBACK_REQUIRED: dict[str, list[dict[str, Any]]] = {
         {"path": "functional_requirements", "label": "Requisiti funzionali", "min_items": 3},
         {"path": "technical_requirements", "label": "Requisiti tecnici", "min_items": 1},
         {"path": "security_compliance", "label": "Requisiti sicurezza"},
+    ],
+    "documento": [
+        {"path": "project.title", "label": "Titolo progetto"},
+        {"path": "definitions", "label": "Definizioni", "min_items": 1},
+        {"path": "architecture.topology", "label": "Schema Logico e Topologia"},
+        {"path": "architecture.components", "label": "Componenti Core", "min_items": 1},
+        {"path": "security.access_control", "label": "Controlli Accesso"},
     ],
 }
 
@@ -107,7 +116,29 @@ def validate_requirements_completeness(
     total = len(fields)
     missing_count = len(result.missing_fields)
     result.confidence = round((total - missing_count) / total, 2) if total else 1.0
-    result.valid = len(result.issues) == 0
+
+    # Structural issues (min_items violations) are always blocking
+    has_structural = any(
+        "insufficienti" in i or "obbligatorio" not in i
+        for i in result.issues
+        if "Requisiti funzionali insufficienti" in i or "requisito tecnico è obbligatorio" in i
+    )
+    # Re-check: structural = min_items violations only
+    structural_issues = [
+        i for i in result.issues if "insufficienti" in i or "requisito tecnico è obbligatorio" in i
+    ]
+
+    if structural_issues:
+        # Structural gaps always block
+        result.valid = False
+    elif result.missing_fields and result.confidence >= app_cfg(
+        "validation.confidence_threshold", 0.75
+    ):
+        # Missing metadata fields with high confidence → warn but allow
+        result.valid = True
+        result.warnings = [f"Campo opzionale mancante: {f}" for f in result.missing_fields]
+    else:
+        result.valid = len(result.issues) == 0
 
     return result
 
@@ -137,57 +168,54 @@ def validate_sla_consistency(
     document_type: str = "capitolato",
 ) -> ValidationResult:
     """
-    Validate SLA values are internally consistent.
+    Validate that SLA section contains the expected KPI/KPO fields.
 
-    Rules loaded from template.yaml (sla_rules section), with fallback defaults.
+    Checks PRESENCE only — does not enforce value constraints (RTO>RPO, ranges).
+    Expected fields loaded from template.yaml sla_rules section.
     """
     from app.core.template_config import load_template_config
 
     config = load_template_config(document_type)
     rules = config.get("sla_rules", {})
 
-    avail_range = rules.get("availability", {"min": 95.0, "max": 99.999})
-    avail_min = avail_range.get("min", 95.0)
-    avail_max = avail_range.get("max", 99.999)
-    check_rto_gt_rpo = rules.get("rto_gt_rpo", True)
-
     result = ValidationResult(valid=True)
 
-    availability = sla.get("availability", "")
-    if availability:
-        try:
-            pct = float(str(availability).rstrip("%"))
-            if pct < avail_min:
-                result.warnings.append(
-                    f"Disponibilità {availability} inferiore al minimo consigliato ({avail_min}%)"
-                )
-            if pct > avail_max:
-                result.issues.append(
-                    f"Disponibilità {availability} non realistica (max {avail_max}%)"
-                )
-        except ValueError:
-            result.warnings.append(f"Valore disponibilità non parsabile: {availability!r}")
+    # Check expected KPI fields are present
+    expected_kpis = rules.get("expected_kpis", [])
+    for kpi in expected_kpis:
+        kpi_name = kpi if isinstance(kpi, str) else kpi.get("field", "")
+        label = kpi if isinstance(kpi, str) else kpi.get("label", kpi_name)
+        value = sla.get(kpi_name)
+        if value is None or value == "":
+            result.missing_fields.append(label)
+            result.issues.append(f"KPI mancante nella sezione SLA: {label}")
 
-    # RTO must be > RPO
-    rto_str = sla.get("rto", "")
-    rpo_str = sla.get("rpo", "")
-    if rto_str and rpo_str and check_rto_gt_rpo:
-        rto = _parse_duration_hours(str(rto_str))
-        rpo = _parse_duration_hours(str(rpo_str))
-        if rto is not None and rpo is not None:
-            if rto <= rpo:
-                result.issues.append(f"RTO ({rto_str}) deve essere maggiore di RPO ({rpo_str})")
+    # Check expected KPO fields (warnings only, not blocking)
+    expected_kpos = rules.get("expected_kpos", [])
+    for kpo in expected_kpos:
+        kpo_name = kpo if isinstance(kpo, str) else kpo.get("field", "")
+        label = kpo if isinstance(kpo, str) else kpo.get("label", kpo_name)
+        value = sla.get(kpo_name)
+        if value is None or value == "":
+            result.warnings.append(f"KPO opzionale mancante nella sezione SLA: {label}")
 
-    # Response time must be a positive number
-    rt = sla.get("response_time", "")
-    if rt:
-        rt_hours = _parse_duration_hours(str(rt))
-        if rt_hours is None:
-            result.warnings.append(f"Tempo di risposta non parsabile: {rt!r}")
-        elif rt_hours <= 0:
-            result.issues.append("Tempo di risposta deve essere positivo")
+    # If SLA section is completely empty, that's a warning (some docs may not need SLA)
+    if not sla:
+        result.warnings.append("Sezione SLA vuota")
+        result.confidence = 0.5
 
-    # Set valid = False if any issues were found
+    # Confidence: ratio of present KPI fields
+    total = len(expected_kpis) if expected_kpis else 1
+    missing_kpis = len(
+        [
+            f
+            for f in result.missing_fields
+            if f in [k if isinstance(k, str) else k.get("label", "") for k in expected_kpis]
+        ]
+    )
+    result.confidence = round((total - missing_kpis) / total, 2) if total else 1.0
+
+    # Blocking only if required KPIs are missing
     if result.issues:
         result.valid = False
 

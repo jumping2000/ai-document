@@ -1,16 +1,16 @@
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 WORKDIR /app
 RUN pip install --no-cache-dir uv==0.5.0
 COPY pyproject.toml .
 RUN uv pip install --system --no-cache -r pyproject.toml
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
+FROM python:3.13-slim AS runtime
 RUN groupadd --gid 1001 appgroup \
  && useradd --uid 1001 --gid appgroup --shell /bin/bash --create-home appuser
 WORKDIR /app
-COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
+COPY --from=builder /usr/local/lib/python3.13 /usr/local/lib/python3.13
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY app/ ./app/
 COPY alembic/ ./alembic/

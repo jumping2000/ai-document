@@ -1,0 +1,91 @@
+template_id: documento
+name: "Documento di Architettura"
+description: "Documento di Architettura IT — descrive logica, topologia, componenti e linee guida"
+language: it
+
+sections:
+  - id: ambito_finalita
+    title: "Ambito di riferimento e Finalità"
+    required: true
+  - id: definizioni
+    title: "Definizioni"
+    required: true
+  - id: finalita
+    title: "Finalità"
+    required: false
+  - id: descrizione_architettura
+    title: "Descrizione Architettura"
+    required: true
+  - id: schema_logico
+    title: "Schema Logico e Topologia"
+    required: true
+  - id: componenti_core
+    title: "Componenti Core (Processori, Nodi, Isole Tecnologiche)"
+    required: true
+  - id: alta_affidabilita
+    title: "Alta Affidabilità (HA), Clustering e Disaster Recovery (DR)"
+    required: true
+  - id: sicurezza_accessi
+    title: "Sicurezza, Accessi e Crittografia"
+    required: true
+  - id: linee_guida
+    title: "Linee Guida e Standard"
+    required: true
+  - id: standard_architetturali
+    title: "Standard Architetturali (Design)"
+    required: false
+  - id: operation_ciclo_vita
+    title: "Operation e Ciclo di Vita"
+    required: false
+  - id: monitoraggio
+    title: "Monitoraggio"
+    required: false
+
+required_fields:
+  - path: "project.title"
+    label: "Titolo Progetto"
+  - path: "project.organization"
+    label: "Organizzazione"
+  - path: "definitions"
+    label: "Definizioni"
+    min_items: 1
+  - path: "architecture.topology"
+    label: "Schema Logico e Topologia"
+  - path: "architecture.components"
+    label: "Componenti Core"
+    min_items: 1
+  - path: "architecture.high_availability"
+    label: "Alta Affidabilità e DR"
+  - path: "security.access_control"
+    label: "Controlli Accesso"
+  - path: "guidelines.standards"
+    label: "Standard Architetturali"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SLA RULES — Definisce quali KPI/KPO devono essere presenti nella sezione SLA
+# ──────────────────────────────────────────────────────────────────────────────
+quality_checks:
+  - id: topology_defined
+    label: "Topologia e schema logico definiti"
+    enabled: true
+  - id: components_listed
+    label: "Componenti core elencati e descritti"
+    enabled: true
+  - id: ha_dr_addressed
+    label: "Alta affidabilità e DR trattati"
+    enabled: true
+  - id: security_addressed
+    label: "Sicurezza e accessi descritti"
+    enabled: true
+  - id: guidelines_present
+    label: "Linee guida e standard indicati"
+    enabled: true
+  - id: coherent_structure
+    label: "Struttura coerente"
+    enabled: true
+
+retrieval_queries:
+  - "architettura sistema {project_name}"
+  - "topologia rete {project_name}"
+  - "componenti infrastruttura {project_name}"
+  - "disaster recovery {project_name}"

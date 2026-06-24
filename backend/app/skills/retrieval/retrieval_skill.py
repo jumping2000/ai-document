@@ -4,7 +4,8 @@ Retrieval Skill
 Orchestrates MCP calls to build rich context for ProcurementAgent.
 
 Responsibilities:
-- Build targeted search queries from requirement fields
+- Build targeted search queries from template.yaml (retrieval_queries section)
+- Resolve {placeholder} syntax from requirement fields
 - Deduplicate and rank retrieved documents
 - Format context for injection into agent prompts
 - Handle MCP unavailability gracefully (fallback to empty context)
@@ -16,11 +17,14 @@ Output: formatted context string + source metadata list
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
 
+from app.core.app_config import app_cfg
+from app.core.template_config import load_template_config
 from app.mcp.client.adapters.nanorag import NanoRAGAdapter
 from app.mcp.client.mcp_client import MCPError
 
@@ -54,7 +58,7 @@ class RetrievalSkill:
         self,
         requirements: dict[str, Any],
         document_type: str = "capitolato",
-        max_docs: int = 8,
+        max_docs: int | None = None,
         kb_id: str | None = None,
     ) -> RetrievedContext:
         """
@@ -63,15 +67,19 @@ class RetrievalSkill:
         Input:  requirements dict + document type
         Output: RetrievedContext with formatted context_text
         """
+        if max_docs is None:
+            max_docs = app_cfg("retrieval.max_docs", 8)
         queries = self._build_queries(requirements, document_type)
         log.info("retrieval_queries", count=len(queries), doc_type=document_type)
 
         # Run queries with limited concurrency (NanoRAG processes LLM calls sequentially)
-        sem = asyncio.Semaphore(2)
+        sem = asyncio.Semaphore(app_cfg("retrieval.max_concurrency", 2))
 
         async def _limited(query: str) -> list[dict[str, Any]]:
             async with sem:
-                return await self._safe_search(query, limit=3, kb_id=kb_id)
+                return await self._safe_search(
+                    query, limit=app_cfg("retrieval.max_results_per_query", 3), kb_id=kb_id
+                )
 
         search_tasks = [_limited(q) for q in queries]
         results_per_query = await asyncio.gather(*search_tasks)
@@ -113,39 +121,70 @@ class RetrievalSkill:
         requirements: dict[str, Any],
         document_type: str,
     ) -> list[str]:
-        """Generate targeted search queries from requirement fields."""
+        """Generate targeted search queries from template.yaml retrieval_queries.
+
+        Loads query templates from the template config, resolves {placeholder}
+        tokens from the requirements dict using dot-notation, and returns only
+        the queries where ALL placeholders resolved to non-empty values.
+        """
+        config = load_template_config(document_type)
+        templates = config.get("retrieval_queries", [])
+        if not templates:
+            log.warning("no_retrieval_queries_in_template", doc_type=document_type)
+            return []
+
         queries: list[str] = []
+        placeholder_re = re.compile(r"\{([^}]+)\}")
 
-        # Base document type query
-        queries.append(f"template {document_type} IT procurement italiana")
+        for tpl in templates:
+            # Find all placeholders in this template
+            placeholders = placeholder_re.findall(tpl)
+            if not placeholders:
+                # No placeholders — use template as-is
+                queries.append(tpl)
+                continue
 
-        # Standards
-        standards = requirements.get("security_compliance", {}).get("standards", [])
-        for std in standards[:3]:
-            queries.append(f"requisiti compliance {std} IT")
+            resolved = tpl
+            skip = False
+            for ph in placeholders:
+                value = self._resolve_placeholder(requirements, ph)
+                if value is None or value == "":
+                    skip = True
+                    break
+                # For lists, take the first element as readable string
+                if isinstance(value, list):
+                    if not value:
+                        skip = True
+                        break
+                    first = value[0]
+                    if isinstance(first, dict):
+                        # Try common descriptive fields
+                        value = (
+                            first.get("description")
+                            or first.get("title")
+                            or first.get("system")
+                            or first.get("name")
+                            or first.get("id", str(first))
+                        )
+                    else:
+                        value = str(first)
+                resolved = resolved.replace(f"{{{ph}}}", str(value))
 
-        # Integration systems
-        integrations = requirements.get("integrations", [])
-        for intg in integrations[:2]:
-            sys_name = intg.get("system", "")
-            if sys_name:
-                queries.append(f"integrazione {sys_name} requisiti tecnici")
-
-        # Sector-specific
-        org = requirements.get("project", {}).get("organization", "")
-        if "pubblica amministrazione" in org.lower() or "pa" in org.lower():
-            queries.append("normativa appalti pubblici ICT AGID CAD")
-            queries.append("D.Lgs 36/2023 codice contratti pubblici digitale")
-
-        # Security
-        data_class = requirements.get("security_compliance", {}).get("data_classification", "")
-        if data_class:
-            queries.append(f"GDPR {data_class} data protection requirements IT")
-
-        # SLA benchmarks
-        queries.append(f"SLA benchmark {document_type} enterprise IT")
+            if not skip:
+                queries.append(resolved)
 
         return list(dict.fromkeys(queries))  # preserve order, remove dups
+
+    @staticmethod
+    def _resolve_placeholder(requirements: dict[str, Any], dotpath: str) -> Any:
+        """Traverse nested dict with dot-notation path, like _get_nested in validation."""
+        parts = dotpath.split(".")
+        current: Any = requirements
+        for part in parts:
+            if not isinstance(current, dict):
+                return None
+            current = current.get(part)
+        return current
 
     async def _safe_search(
         self,
@@ -173,7 +212,7 @@ class RetrievalSkill:
             title = doc.get("title", f"Document {i}")
             source = doc.get("source", "unknown")
             score = doc.get("relevance_score", 0.0)
-            excerpt = doc.get("excerpt", "").strip()[:500]
+            excerpt = doc.get("excerpt", "").strip()[: app_cfg("retrieval.max_excerpt_length", 500)]
 
             lines.append(f"### [{i}] {title}")
             lines.append(f"*Source: {source} | Relevance: {score:.2f}*")

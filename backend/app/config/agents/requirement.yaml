@@ -41,11 +41,9 @@ output_schema:
       description: "Descrizione del requisito tecnico"
       constraint: "Eventuale vincolo (opzionale)"
   sla:
-    availability: "99.9%"
-    rto: "4h"
-    rpo: "1h"
-    response_time: "< 3s"
-    custom_kpis: []
+    K1: "99%"
+    K2: "1%"
+    K3: "0"
   security_compliance:
     standards:
       - "ISO 27001"
@@ -87,7 +85,9 @@ critical_fields:
   - "scope.objectives"
   - "functional_requirements"
   - "technical_requirements"
-  - "sla.availability"
+  - "sla.K1"
+  - "sla.K2"
+  - "sla.K3"
   - "security_compliance.standards"
   - "timeline.go_live"
 
@@ -98,9 +98,6 @@ flat_to_nested:
   budget_range:
     - budget
     - indicative_value
-  sla:
-    - sla
-    - availability
   timeline:
     - timeline
     - go_live

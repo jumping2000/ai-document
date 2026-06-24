@@ -1,6 +1,6 @@
 // ── Workflow ──────────────────────────────────────────────────────────────────
 
-export type DocumentType = 'capitolato' | 'requisiti';
+export type DocumentType = 'capitolato' | 'requisiti' | 'documento';
 
 export type WorkflowStateEnum =
   | 'INIT'
@@ -37,6 +37,7 @@ export type WorkflowEventType =
   | 'agent_start'
   | 'agent_done'
   | 'quality_report'
+  | 'validation_result'
   | 'validation_failed'
   | 'completed'
   | 'failed'
@@ -76,6 +77,16 @@ export interface QualityReport {
   missing_sections: string[];
   suggestions: string[];
   summary: string;
+}
+
+// ── Validation Result ──────────────────────────────────────────────────────
+
+export interface ValidationResult {
+  valid: boolean;
+  confidence: number;
+  missing_fields: string[];
+  issues: string[];
+  warnings: string[];
 }
 
 // ── Document ──────────────────────────────────────────────────────────────────

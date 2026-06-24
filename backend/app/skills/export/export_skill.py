@@ -20,19 +20,16 @@ from typing import Any
 
 import structlog
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
     HRFlowable,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
-    Table,
-    TableStyle,
 )
 
 from app.core.config import settings
@@ -184,21 +181,53 @@ class ExportSkill:
         brand_blue = colors.HexColor("#1A1A2E")
 
         custom_styles = {
-            "Title": ParagraphStyle("CustomTitle", parent=styles["Title"],
-                                    fontSize=20, textColor=brand_blue, spaceAfter=20),
-            "H1": ParagraphStyle("H1", parent=styles["Heading1"],
-                                 fontSize=14, textColor=brand_blue, spaceBefore=14, spaceAfter=6),
-            "H2": ParagraphStyle("H2", parent=styles["Heading2"],
-                                 fontSize=12, textColor=brand_blue, spaceBefore=10, spaceAfter=4),
-            "H3": ParagraphStyle("H3", parent=styles["Heading3"],
-                                 fontSize=10, spaceBefore=8, spaceAfter=2),
-            "Body": ParagraphStyle("Body", parent=styles["Normal"],
-                                   fontSize=9, leading=14, spaceAfter=6),
-            "Bullet": ParagraphStyle("Bullet", parent=styles["Normal"],
-                                     fontSize=9, leftIndent=20, bulletIndent=10, spaceAfter=3),
+            "Title": ParagraphStyle(
+                "CustomTitle",
+                parent=styles["Title"],
+                fontSize=20,
+                textColor=brand_blue,
+                spaceAfter=20,
+            ),
+            "H1": ParagraphStyle(
+                "H1",
+                parent=styles["Heading1"],
+                fontSize=14,
+                textColor=brand_blue,
+                spaceBefore=14,
+                spaceAfter=6,
+            ),
+            "H2": ParagraphStyle(
+                "H2",
+                parent=styles["Heading2"],
+                fontSize=12,
+                textColor=brand_blue,
+                spaceBefore=10,
+                spaceAfter=4,
+            ),
+            "H3": ParagraphStyle(
+                "H3", parent=styles["Heading3"], fontSize=10, spaceBefore=8, spaceAfter=2
+            ),
+            "Body": ParagraphStyle(
+                "Body", parent=styles["Normal"], fontSize=9, leading=14, spaceAfter=6
+            ),
+            "Bullet": ParagraphStyle(
+                "Bullet",
+                parent=styles["Normal"],
+                fontSize=9,
+                leftIndent=20,
+                bulletIndent=10,
+                spaceAfter=3,
+            ),
         }
 
-        story = [Paragraph(title, custom_styles["Title"]), Spacer(1, 0.5 * cm)]
+        # Pre-process: convert markdown tables to plain text lines,
+        # since ReportLab Paragraph cannot render table syntax.
+        content = self._flatten_markdown_tables(content)
+
+        story = [
+            Paragraph(self._sanitize_for_reportlab(title), custom_styles["Title"]),
+            Spacer(1, 0.5 * cm),
+        ]
 
         for line in content.split("\n"):
             stripped = line.strip()
@@ -208,14 +237,91 @@ class ExportSkill:
 
             if stripped.startswith("## "):
                 story.append(HRFlowable(width="100%", thickness=0.5, color=brand_blue))
-                story.append(Paragraph(stripped[3:], custom_styles["H1"]))
+                story.append(
+                    Paragraph(self._sanitize_for_reportlab(stripped[3:]), custom_styles["H1"])
+                )
             elif stripped.startswith("### "):
-                story.append(Paragraph(stripped[4:], custom_styles["H2"]))
+                story.append(
+                    Paragraph(self._sanitize_for_reportlab(stripped[4:]), custom_styles["H2"])
+                )
             elif stripped.startswith("#### "):
-                story.append(Paragraph(stripped[5:], custom_styles["H3"]))
+                story.append(
+                    Paragraph(self._sanitize_for_reportlab(stripped[5:]), custom_styles["H3"])
+                )
             elif stripped.startswith(("- ", "* ")):
-                story.append(Paragraph(f"• {stripped[2:]}", custom_styles["Bullet"]))
+                story.append(
+                    Paragraph(
+                        self._sanitize_for_reportlab(f"• {stripped[2:]}"), custom_styles["Bullet"]
+                    )
+                )
             else:
-                story.append(Paragraph(stripped, custom_styles["Body"]))
+                story.append(
+                    Paragraph(self._sanitize_for_reportlab(stripped), custom_styles["Body"])
+                )
 
         doc.build(story)
+
+    @staticmethod
+    def _sanitize_for_reportlab(text: str) -> str:
+        """Escape HTML and fix tags that ReportLab's Paragraph parser can't handle.
+
+        ReportLab treats <br> as self-closing — content after it causes
+        'No content allowed in br tag'.  We also escape raw '<'/'>' that
+        are not valid ReportLab XML tags.
+        """
+        import html as _html
+
+        # Normalise <br> variants → newline (ReportLab Paragraph respects \n)
+        text = re.sub(r"<br\s*/?\s*>", "\n", text, flags=re.IGNORECASE)
+
+        # Extract safe ReportLab tags, replace with placeholders
+        _SAFE_RE = re.compile(
+            r"<(/?)(b|i|u|sup|sub|font|a|para|strike|strong|em)>",
+            re.IGNORECASE,
+        )
+        safe_tags: list[str] = []
+
+        def _save_tag(m: re.Match) -> str:
+            safe_tags.append(m.group(0))
+            return f"\x00SAFETAG{len(safe_tags) - 1}\x00"
+
+        text = _SAFE_RE.sub(_save_tag, text)
+
+        # Escape all remaining HTML entities
+        text = _html.escape(text)
+
+        # Restore safe tags
+        for i, tag in enumerate(safe_tags):
+            text = text.replace(f"\x00SAFETAG{i}\x00", tag)
+
+        return text
+
+    @staticmethod
+    def _flatten_markdown_tables(content: str) -> str:
+        """Convert markdown tables to plain-text lines.
+
+        Markdown pipe-tables are not renderable by ReportLab Paragraph.
+        We convert each row to a bullet-style line so content is still
+        readable in the PDF.
+        """
+        lines = content.split("\n")
+        result: list[str] = []
+        in_table = False
+        for line in lines:
+            stripped = line.strip()
+            # Detect table rows: start+end with '|' and have at least 2 columns
+            if stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 3:
+                in_table = True
+                # Skip separator rows like |---|---|---|
+                if re.match(r"^\|[\s\-:|]+\|$", stripped):
+                    continue
+                # Convert cell content to comma-separated text
+                cells = [c.strip() for c in stripped.strip("|").split("|")]
+                result.append("• " + " — ".join(cells))
+            else:
+                if in_table:
+                    # Add a blank line after table ends
+                    result.append("")
+                    in_table = False
+                result.append(line)
+        return "\n".join(result)

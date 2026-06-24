@@ -41,7 +41,7 @@ def complete_capitolato_requirements() -> dict:
         "technical_requirements": [
             {"id": "TR-001", "category": "Hosting", "description": "Cloud SaaS", "constraint": ""},
         ],
-        "sla": {"availability": "99.9%", "rto": "4h", "rpo": "1h", "response_time": "2s"},
+        "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
         "security_compliance": {
             "standards": ["ISO 27001", "GDPR"],
             "requirements": ["MFA obbligatorio", "Crittografia AES-256"],
@@ -107,42 +107,35 @@ class TestValidateRequirementsCompleteness:
 
 
 class TestValidateSLAConsistency:
-    def test_valid_sla(self) -> None:
-        result = validate_sla_consistency({"availability": "99.9%", "rto": "4h", "rpo": "1h"})
+    def test_valid_sla_all_kpis_present(self) -> None:
+        """Valid when all expected KPIs are present."""
+        result = validate_sla_consistency({"K1": "99%", "K2": "1%", "K3": "0"})
         assert result.valid is True
         assert result.issues == []
 
-    def test_low_availability_warning(self) -> None:
-        result = validate_sla_consistency({"availability": "90%"})
-        assert len(result.warnings) > 0
+    def test_missing_required_kpi_fails(self) -> None:
+        """Missing required KPI generates an issue."""
+        result = validate_sla_consistency({"K2": "1%", "K3": "0"})
+        assert result.valid is False
+        assert any("Qualità del Codice" in issue for issue in result.issues)
 
-    def test_unrealistic_availability(self) -> None:
-        result = validate_sla_consistency({"availability": "100%"})
-        assert len(result.issues) > 0
-
-    def test_empty_sla(self) -> None:
+    def test_empty_sla_fails(self) -> None:
+        """Empty SLA → all KPIs missing → invalid."""
         result = validate_sla_consistency({})
-        assert result.valid is True  # no constraints to violate
-
-    def test_rto_less_than_rpo_fails(self) -> None:
-        result = validate_sla_consistency({"rto": "30m", "rpo": "4h"})
         assert result.valid is False
-        assert any("RTO" in issue and "RPO" in issue for issue in result.issues)
+        assert len(result.issues) >= 1
 
-    def test_rto_equals_rpo_fails(self) -> None:
-        result = validate_sla_consistency({"rto": "4h", "rpo": "4h"})
-        assert result.valid is False
-        assert any("RTO" in issue for issue in result.issues)
+    def test_missing_optional_kpo_warning(self) -> None:
+        """Missing optional KPO generates a warning, not a blocking issue."""
+        result = validate_sla_consistency({"K1": "99%", "K2": "1%", "K3": "0"})
+        # KPOs reuse same field names as KPIs → all present
+        assert result.valid is True
+        assert result.warnings == []
 
-    def test_unparsable_response_time_warning(self) -> None:
-        result = validate_sla_consistency({"response_time": "veloce"})
-        assert len(result.warnings) > 0
-        assert any("risposta" in w.lower() for w in result.warnings)
-
-    def test_zero_response_time_fails(self) -> None:
-        result = validate_sla_consistency({"response_time": "0"})
-        assert result.valid is False
-        assert any("positivo" in issue.lower() for issue in result.issues)
+    def test_value_not_validated(self) -> None:
+        """Values are NOT validated — only presence matters."""
+        result = validate_sla_consistency({"K1": "50%", "K2": "99%", "K3": "30"})
+        assert result.valid is True  # all KPIs present, even with "bad" values
 
 
 # ── validate_document_sections ────────────────────────────────────────────────

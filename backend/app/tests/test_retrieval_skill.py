@@ -29,17 +29,29 @@ def mock_mcp_client() -> NanoRAGAdapter:
 
 SAMPLE_REQUIREMENTS: dict = {
     "project": {
+        "title": "Sistema ERP Cloud",
         "name": "Test Project",
         "organization": "Comune di Roma - Pubblica Amministrazione",
+    },
+    "scope": {
+        "objectives": ["Digitalizzare i processi"],
     },
     "security_compliance": {
         "standards": ["ISO 27001", "GDPR"],
         "data_classification": "riservato",
     },
+    "functional_requirements": [
+        {"id": "FR-001", "title": "Login SSO"},
+        {"id": "FR-002", "title": "Dashboard"},
+    ],
+    "technical_requirements": [
+        {"id": "TR-001", "category": "Hosting", "description": "Cloud SaaS"},
+    ],
     "integrations": [
         {"system": "SAP ERP"},
         {"system": "PagoPA"},
     ],
+    "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
 }
 
 
@@ -70,30 +82,47 @@ def test_retrieval_skill_custom_url() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. _build_queries reads canonical nested paths
+# 3. _build_queries loads from template.yaml and resolves placeholders
 # ---------------------------------------------------------------------------
-def test_build_queries_uses_canonical_paths() -> None:
-    """_build_queries reads nested dicts correctly."""
+def test_build_queries_resolves_placeholders() -> None:
+    """_build_queries loads retrieval_queries from template.yaml and resolves placeholders."""
     skill = RetrievalSkill()
     queries = skill._build_queries(SAMPLE_REQUIREMENTS, "capitolato")
 
-    joined = " ".join(queries)
+    # Should have queries (loaded from template.yaml)
+    assert len(queries) > 0
 
-    # Standards extracted
-    assert any("ISO 27001" in q for q in queries)
-    assert any("GDPR" in q for q in queries)
+    # Placeholders should be resolved — no {xxx} patterns remaining
+    for q in queries:
+        assert "{" not in q, f"Unresolved placeholder in query: {q}"
 
-    # Organization → public-admin specific queries
-    assert any("AGID" in q or "appalti pubblici" in q for q in queries)
+    # Project title should appear in resolved queries
+    assert any("Sistema ERP Cloud" in q for q in queries)
 
-    # Data classification
-    assert any("riservato" in q for q in queries)
+    # Technical requirements should appear
+    assert any("Cloud SaaS" in q or "Hosting" in q for q in queries)
 
-    # Integrations
+    # Integrations should appear (first element resolved)
     assert any("SAP ERP" in q for q in queries)
 
-    # Base document type query present
-    assert queries[0] == "template capitolato IT procurement italiana"
+
+def test_build_queries_skips_empty_placeholders() -> None:
+    """Queries with unresolvable placeholders are skipped."""
+    skill = RetrievalSkill()
+    # Minimal requirements — missing many fields
+    minimal = {"project": {"title": "Test"}}
+    queries = skill._build_queries(minimal, "capitolato")
+    # All returned queries should have resolved placeholders
+    for q in queries:
+        assert "{" not in q, f"Unresolved placeholder in query: {q}"
+
+
+def test_build_queries_empty_template_returns_empty() -> None:
+    """If template has no retrieval_queries, returns empty list."""
+    skill = RetrievalSkill()
+    with patch("app.skills.retrieval.retrieval_skill.load_template_config", return_value={}):
+        queries = skill._build_queries(SAMPLE_REQUIREMENTS, "capitolato")
+    assert queries == []
 
 
 # ---------------------------------------------------------------------------

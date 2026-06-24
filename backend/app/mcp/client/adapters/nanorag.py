@@ -18,6 +18,37 @@ log = structlog.get_logger(__name__)
 class NanoRAGAdapter(MCPClient):
     """Adapter that adds NanoRAG-specific search_documents() on top of MCPClient."""
 
+    # Cache discovered search tool across calls within the same adapter instance
+    _search_tool_name: str | None = None
+    _search_tool_props: dict[str, Any] | None = None
+
+    async def _resolve_search_tool(self) -> tuple[str, dict[str, Any]] | None:
+        """Discover and cache the search tool name + schema."""
+        if self._search_tool_name is not None:
+            return self._search_tool_name, self._search_tool_props or {}
+
+        tools = await self.list_tools()
+        tool_names = [t["name"] for t in tools]
+
+        search_tool_name: str | None = None
+        for pattern in ["search", "query", "retrieve", "ask", "chat"]:
+            match = next((n for n in tool_names if pattern in n.lower()), None)
+            if match:
+                search_tool_name = match
+                break
+
+        if not search_tool_name:
+            log.warning("mcp_no_search_tool", available=tool_names)
+            return None
+
+        tool_def = next((t for t in tools if t["name"] == search_tool_name), None)
+        props = (tool_def or {}).get("input_schema", {}).get("properties", {})
+
+        self._search_tool_name = search_tool_name
+        self._search_tool_props = props
+        log.info("mcp_search_tool_resolved", tool=search_tool_name, params=list(props.keys()))
+        return search_tool_name, props
+
     async def search_documents(
         self, query: str, limit: int = 5, kb_id: str | None = None
     ) -> list[dict[str, Any]]:
@@ -36,34 +67,22 @@ class NanoRAGAdapter(MCPClient):
         Returns:
             List of document dicts (may be empty if no search tool found)
         """
-        tools = await self.list_tools()
-        tool_names = [t["name"] for t in tools]
-
-        # Find first tool matching a search pattern
-        search_tool_name: str | None = None
-        for pattern in ["search", "query", "retrieve", "ask", "chat"]:
-            match = next((n for n in tool_names if pattern in n.lower()), None)
-            if match:
-                search_tool_name = match
-                break
-
-        if not search_tool_name:
-            log.warning("mcp_no_search_tool", available=tool_names)
+        resolved = await self._resolve_search_tool()
+        if not resolved:
             return []
 
-        # Build arguments from tool schema
+        search_tool_name, props = resolved
+
+        # Build arguments from cached tool schema
         args: dict[str, Any] = {}
-        tool_def = next((t for t in tools if t["name"] == search_tool_name), None)
-        if tool_def and tool_def.get("input_schema"):
-            props = tool_def["input_schema"].get("properties", {})
-            for param_name in props:
-                low = param_name.lower()
-                if low in ("query", "message", "text", "question"):
-                    args[param_name] = query
-                elif low in ("limit", "top_k", "max_results", "count"):
-                    args[param_name] = limit
-                elif low in ("kb_id", "knowledge_base", "database", "collection"):
-                    args[param_name] = kb_id or "default"
+        for param_name in props:
+            low = param_name.lower()
+            if low in ("query", "message", "text", "question"):
+                args[param_name] = query
+            elif low in ("limit", "top_k", "max_results", "count"):
+                args[param_name] = limit
+            elif low in ("kb_id", "knowledge_base", "database", "collection"):
+                args[param_name] = kb_id or "default"
 
         if not args:
             args = {"query": query, "limit": limit}

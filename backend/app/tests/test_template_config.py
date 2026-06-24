@@ -15,14 +15,14 @@ class TestLoadTemplateConfig:
         config = load_template_config("capitolato")
         assert config["template_id"] == "capitolato"
         assert len(config["sections"]) == 9
-        assert len(config["required_fields"]) == 8
+        assert len(config["required_fields"]) == 10
         assert len(config["quality_checks"]) == 8
 
     def test_load_requisiti_config(self) -> None:
         config = load_template_config("requisiti")
         assert config["template_id"] == "requisiti"
         assert len(config["sections"]) == 6
-        assert len(config["required_fields"]) == 5
+        assert len(config["required_fields"]) == 8
 
     def test_missing_config_derives_from_jinja2(self) -> None:
         """When template.yaml doesn't exist, fall back to parsing .j2."""

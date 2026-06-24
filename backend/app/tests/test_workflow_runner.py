@@ -256,7 +256,7 @@ async def test_runner_completes_workflow_with_real_agent_contracts(
             {"id": "FR-003"},
         ],
         "technical_requirements": [{"id": "TR-001"}],
-        "sla": {"availability": "99.9%"},
+        "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
         "security_compliance": {"standards": ["ISO 27001"]},
         "timeline": {"go_live": "2026-01-01"},
     }
@@ -345,7 +345,7 @@ async def test_validation_phase_calls_sla_consistency(
         "scope": {"objectives": ["Digitalizzare i processi"]},
         "functional_requirements": [{"id": "FR-001"}, {"id": "FR-002"}, {"id": "FR-003"}],
         "technical_requirements": [{"id": "TR-001"}],
-        "sla": {"availability": "100%"},
+        "sla": {"K1": "100%", "K2": "0%", "K3": "0"},
         "security_compliance": {"standards": ["ISO 27001"]},
         "timeline": {"go_live": "2026-01-01"},
     }
@@ -393,9 +393,9 @@ async def test_validation_phase_calls_sla_consistency(
     called_with: list[dict] = []
     original_sla = runner_module.validate_sla_consistency
 
-    def spy_sla(sla: dict):
+    def spy_sla(sla: dict, document_type: str = "capitolato"):
         called_with.append(sla)
-        return original_sla(sla)
+        return original_sla(sla, document_type)
 
     monkeypatch.setattr(runner_module, "validate_sla_consistency", spy_sla)
 
@@ -405,7 +405,7 @@ async def test_validation_phase_calls_sla_consistency(
 
     assert result["status"] == "completed"
     assert len(called_with) >= 1, "validate_sla_consistency was not called"
-    assert called_with[0]["availability"] == "100%"
+    assert called_with[0]["K1"] == "100%"
 
 
 @pytest.mark.asyncio
@@ -421,7 +421,7 @@ async def test_validation_phase_emits_richness_score(
         "scope": {"objectives": ["Digitalizzare i processi"]},
         "functional_requirements": [{"id": "FR-001"}, {"id": "FR-002"}, {"id": "FR-003"}],
         "technical_requirements": [{"id": "TR-001"}],
-        "sla": {"availability": "99.9%"},
+        "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
         "security_compliance": {"standards": ["ISO 27001"]},
         "timeline": {"go_live": "2026-01-01"},
     }
@@ -498,7 +498,7 @@ async def test_writing_phase_calls_placeholder_detection(
         "scope": {"objectives": ["Digitalizzare i processi"]},
         "functional_requirements": [{"id": "FR-001"}, {"id": "FR-002"}, {"id": "FR-003"}],
         "technical_requirements": [{"id": "TR-001"}],
-        "sla": {"availability": "99.9%"},
+        "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
         "security_compliance": {"standards": ["ISO 27001"]},
         "timeline": {"go_live": "2026-01-01"},
     }
@@ -573,7 +573,7 @@ async def test_writing_phase_calls_document_sections(
         "scope": {"objectives": ["Digitalizzare i processi"]},
         "functional_requirements": [{"id": "FR-001"}, {"id": "FR-002"}, {"id": "FR-003"}],
         "technical_requirements": [{"id": "TR-001"}],
-        "sla": {"availability": "99.9%"},
+        "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
         "security_compliance": {"standards": ["ISO 27001"]},
         "timeline": {"go_live": "2026-01-01"},
     }

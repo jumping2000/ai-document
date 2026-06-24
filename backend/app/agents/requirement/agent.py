@@ -45,11 +45,9 @@ CANONICAL_SCHEMA = {
         }
     ],
     "sla": {
-        "availability": "99.9%",
-        "rto": "4h",
-        "rpo": "1h",
-        "response_time": "< 3s",
-        "custom_kpis": [],
+        "K1": "99%",
+        "K2": "1%",
+        "K3": "0",
     },
     "security_compliance": {
         "standards": ["ISO 27001", "GDPR"],
@@ -86,7 +84,9 @@ CANONICAL_CRITICAL_FIELDS = [
     "scope.objectives",
     "functional_requirements",
     "technical_requirements",
-    "sla.availability",
+    "sla.K1",
+    "sla.K2",
+    "sla.K3",
     "security_compliance.standards",
     "timeline.go_live",
 ]
@@ -94,7 +94,6 @@ CANONICAL_CRITICAL_FIELDS = [
 _FLAT_TO_NESTED: dict[str, tuple[str, str]] = {
     "project_name": ("project", "title"),
     "budget_range": ("budget", "indicative_value"),
-    "sla": ("sla", "availability"),
     "timeline": ("timeline", "go_live"),
 }
 
@@ -103,10 +102,10 @@ def normalize_to_canonical(raw: dict[str, Any]) -> dict[str, Any]:
     """Map flat LLM keys to canonical nested EnrichedRequirements schema."""
 
     def _safe_dict(val: Any) -> dict:
-        return val if isinstance(val, dict) else {}
+        return dict(val) if isinstance(val, dict) else {}
 
     def _safe_list(val: Any) -> list:
-        return val if isinstance(val, list) else []
+        return list(val) if isinstance(val, list) else []
 
     canon: dict[str, Any] = {
         "project": _safe_dict(raw.get("project")),
@@ -235,14 +234,26 @@ class RequirementAgent:
         existing: dict[str, Any],
     ) -> RequirementResult:
         import json as _json
+        import traceback
 
         log.info("requirement.collect.start", workflow_id=workflow_id)
 
-        schema_json = _json.dumps(self._schema, indent=2, ensure_ascii=False)
+        try:
+            schema_json = _json.dumps(self._schema, indent=2, ensure_ascii=False)
+            existing_json = _json.dumps(existing, ensure_ascii=False) if existing else "none"
+        except (TypeError, ValueError) as exc:
+            log.error(
+                "requirement.collect.serialize_input_failed",
+                workflow_id=workflow_id,
+                error=str(exc),
+                traceback=traceback.format_exc(),
+            )
+            raise
+
         prompt = (
             "You are a senior IT Business Analyst.\n"
             f"Document type: {document_type}\n"
-            f"Existing context: {_json.dumps(existing) if existing else 'none'}\n\n"
+            f"Existing context: {existing_json}\n\n"
             "Return ONLY a JSON object conforming to this schema:\n"
             f"{schema_json}\n\n"
             "Rules:\n"
@@ -253,7 +264,18 @@ class RequirementAgent:
             "- priority must be MUST, SHOULD, or COULD.\n"
             "- Do NOT include prose — only the JSON object."
         )
-        response = await self._agno.arun(prompt)
+
+        try:
+            response = await self._agno.arun(prompt)
+        except (TypeError, ValueError) as exc:
+            log.error(
+                "requirement.collect.llm_call_failed",
+                workflow_id=workflow_id,
+                error=str(exc),
+                traceback=traceback.format_exc(),
+            )
+            raise
+
         raw = extract_json(response.content)
         if raw is None:
             raise RequirementError(f"Non-JSON response: {response.content[:200]}")
@@ -276,9 +298,29 @@ class RequirementAgent:
 
         confidence = max(0.0, 1.0 - len(missing) / len(self._critical_fields))
 
-        summary_resp = await self._agno.arun(
-            f"Summarize in 3 sentences for a '{document_type}': {_json.dumps(canon, ensure_ascii=False)}"
-        )
+        try:
+            canon_json = _json.dumps(canon, ensure_ascii=False)
+        except (TypeError, ValueError) as exc:
+            log.error(
+                "requirement.collect.serialize_canon_failed",
+                workflow_id=workflow_id,
+                error=str(exc),
+                traceback=traceback.format_exc(),
+            )
+            raise
+
+        try:
+            summary_resp = await self._agno.arun(
+                f"Summarize in 3 sentences for a '{document_type}': {canon_json}"
+            )
+        except (TypeError, ValueError) as exc:
+            log.error(
+                "requirement.collect.summary_call_failed",
+                workflow_id=workflow_id,
+                error=str(exc),
+                traceback=traceback.format_exc(),
+            )
+            raise
 
         log.info(
             "requirement.collect.done",

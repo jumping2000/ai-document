@@ -103,12 +103,11 @@
 
 ## 6. Service Level Agreement (SLA)
 
-| Parametro | Valore Richiesto |
-|-----------|-----------------|
-| Disponibilità | {{ sla.get("availability", "99.5%") }} |
-| RTO | {{ sla.get("rto", "4h") }} |
-| RPO | {{ sla.get("rpo", "1h") }} |
-| Tempo di Risposta | {{ sla.get("response_time", "< 3s") }} |
+| Indicatore | ID | Valore Richiesto |
+|------------|-----|-----------------|
+| Qualità del Codice | K1 | {{ sla.get("K1", "99%") }} |
+| Tasso Difettosità Esercizio | K2 | {{ sla.get("K2", "1%") }} |
+| Ritardo Consegna Deliverable | K3 | {{ sla.get("K3", "0") }} |
 
 {% for kpi in sla.get("custom_kpis", []) %}
 - {{ kpi }}

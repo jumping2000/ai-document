@@ -135,6 +135,13 @@ def _default_template(document_type: str) -> str:
 ## 10. Criteri di Accettazione
 ## 11. Allegati
 """
+    if document_type == "documento":
+        return """
+# Documento di Architettura — {{ project_name }}
+## 1. Ambito di riferimento e Finalità
+## 2. Descrizione Architettura
+## 3. Linee Guida e Standard
+"""
     return """
 # Documento Requisiti Tecnici — {{ project_name }}
 ## 1. Scope

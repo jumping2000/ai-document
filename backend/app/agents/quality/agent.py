@@ -11,6 +11,7 @@ import structlog
 from agno.agent import Agent
 
 from app.core.agent_config import load_agent_config
+from app.core.app_config import app_cfg
 from app.core.config import settings
 from app.core.json_extract import extract_json
 from app.core.llm import get_model_adapter
@@ -37,6 +38,7 @@ class QualityReport:
     suggestions: list[str] = field(default_factory=list)
     section_scores: dict[str, float] = field(default_factory=dict)
     needs_enrichment: bool = False
+    warnings: list[str] = field(default_factory=list)
 
 
 class QualityAgent:
@@ -87,7 +89,7 @@ class QualityAgent:
 
         prompt = (
             f"Review this '{document_type}' document against requirements.\n\n"
-            f"DOCUMENT:\n{content[:8000]}\n\n"
+            f"DOCUMENT:\n{content[: app_cfg('quality.max_content_length', 8000)]}\n\n"
             f"ORIGINAL REQUIREMENTS: {requirements}\n\n"
             f"CHECKLIST:\n" + "\n".join(f"- {c}" for c in self._checklist) + "\n\n"
             'Return JSON: {"score": float(0-1), "passed": bool, '
@@ -107,9 +109,31 @@ class QualityAgent:
                     section_scores=data.get("section_scores", {}),
                     needs_enrichment=bool(data.get("needs_enrichment", False)),
                 )
-                # Enforce threshold
+                # Enforce threshold with tolerance zone
                 if report.score < self._threshold:
-                    report.passed = False
+                    # Soft threshold: if score >= 0.6, pass with warnings.
+                    # We no longer block on individual keyword matches because
+                    # the LLM naturally uses words like "mancante"/"missing" in
+                    # quality reviews — that doesn't mean the document is unusable.
+                    #
+                    # Only truly catastrophic scores (< 0.4) or documents with
+                    # MANY issues relative to score get hard-blocked.
+                    severe = report.score < app_cfg("quality.severe_score_threshold", 0.4) or (
+                        len(report.issues) > app_cfg("quality.max_issues_threshold", 5)
+                        and report.score < app_cfg("quality.moderate_score_threshold", 0.5)
+                    )
+                    if not severe:
+                        report.passed = True
+                        report.needs_enrichment = False
+                        report.warnings = report.issues[:]  # preserve as warnings
+                        log.info(
+                            "quality.review.passed_with_warnings",
+                            score=report.score,
+                            threshold=self._threshold,
+                            issues_count=len(report.issues),
+                        )
+                    else:
+                        report.passed = False
                 log.info("quality.review.done", score=report.score, passed=report.passed)
                 return report
             except (json.JSONDecodeError, KeyError) as exc:

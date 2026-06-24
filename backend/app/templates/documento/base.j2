@@ -1,0 +1,167 @@
+{# Documento di Architettura - Base Template #}
+{# Variables injected directly from enriched_requirements dict #}
+
+{% set proj = enriched_requirements.get("project", {}) %}
+{% set defs = enriched_requirements.get("definitions", []) %}
+{% set finalita = enriched_requirements.get("purpose", "") %}
+{% set arch = enriched_requirements.get("architecture", {}) %}
+{% set ha_dr = enriched_requirements.get("architecture", {}).get("high_availability", {}) %}
+{% set security = enriched_requirements.get("security", {}) %}
+{% set guidelines = enriched_requirements.get("guidelines", {}) %}
+{% set monitoring = enriched_requirements.get("monitoring", {}) %}
+{% set ops = enriched_requirements.get("operations", {}) %}
+
+# {{ proj.get("title", "DOCUMENTO DI ARCHITETTURA") }}
+
+**Organizzazione:** {{ proj.get("organization", "") }}
+**Data:** {{ "oggi" }}
+**Versione:** 1.0
+
+---
+
+## 1. Ambito di riferimento e Finalità
+
+{{ proj.get("description", "") }}
+
+### 1.1 Definizioni
+
+{% if defs %}
+| Termine | Definizione |
+|---------|-------------|
+{% for d in defs %}
+| {{ d.get("term", "") }} | {{ d.get("definition", "") }} |
+{% endfor %}
+{% else %}
+[Definizioni da completare]
+{% endif %}
+
+### 1.2 Finalità
+
+{% if finalita %}
+{{ finalita }}
+{% else %}
+[Finalità da definire — sezione opzionale]
+{% endif %}
+
+---
+
+## 2. Descrizione Architettura
+
+### 2.1 Schema Logico e Topologia
+
+{% if arch.get("topology") %}
+{{ arch.get("topology") }}
+{% else %}
+[Schema logico e topologia da definire]
+{% endif %}
+
+{% if arch.get("topology_diagram") %}
+```mermaid
+{{ arch.get("topology_diagram") }}
+```
+{% endif %}
+
+### 2.2 Componenti Core (Processori, Nodi, Isole Tecnologiche)
+
+{% if arch.get("components") %}
+| Componente | Tipo | Descrizione | Tecnologia |
+|------------|------|-------------|------------|
+{% for c in arch.get("components", []) %}
+| {{ c.get("name", "") }} | {{ c.get("type", "") }} | {{ c.get("description", "") }} | {{ c.get("technology", "") }} |
+{% endfor %}
+{% else %}
+[Componenti core da definire]
+{% endif %}
+
+### 2.3 Alta Affidabilità (HA), Clustering e Disaster Recovery (DR)
+
+{% if ha_dr %}
+**Clustering:**
+{{ ha_dr.get("clustering", "[da definire]") }}
+
+**Disaster Recovery:**
+- **RTO:** {{ ha_dr.get("rto", "TBD") }}
+- **RPO:** {{ ha_dr.get("rpo", "TBD") }}
+- **Strategia:** {{ ha_dr.get("strategy", "[da definire]") }}
+
+{% if ha_dr.get("failover_procedures") %}
+**Procedure di Failover:**
+{% for proc in ha_dr.get("failover_procedures", []) %}
+- {{ proc }}
+{% endfor %}
+{% endif %}
+{% else %}
+[Alta affidabilità e DR da definire]
+{% endif %}
+
+### 2.4 Sicurezza, Accessi e Crittografia
+
+{% if security %}
+**Controlli di Accesso:**
+{% for ctrl in security.get("access_control", []) %}
+- {{ ctrl }}
+{% endfor %}
+
+**Crittografia:**
+- **In Transit:** {{ security.get("encryption_transit", "[da definire]") }}
+- **At Rest:** {{ security.get("encryption_rest", "[da definire]") }}
+
+**Standard di Riferimento:**
+{% for std in security.get("standards", []) %}
+- {{ std }}
+{% endfor %}
+{% else %}
+[Sicurezza e accessi da definire]
+{% endif %}
+
+---
+
+## 3. Linee Guida e Standard
+
+### 3.1 Standard Architetturali (Design)
+
+{% if guidelines.get("standards") %}
+{% for std in guidelines.get("standards", []) %}
+- **{{ std.get("name", "") }}:** {{ std.get("description", "") }}
+{% endfor %}
+{% else %}
+[Standard architetturali da definire]
+{% endif %}
+
+### 3.2 Operation e Ciclo di Vita
+
+{% if ops %}
+**Ambienti:**
+{% for env in ops.get("environments", []) %}
+- {{ env }}
+{% endfor %}
+
+**Ciclo di Rilascio:**
+{{ ops.get("release_cycle", "[da definire]") }}
+
+**Manutenzione:**
+{{ ops.get("maintenance", "[da definire]") }}
+{% else %}
+[Operation e ciclo di vita da definire]
+{% endif %}
+
+### 3.3 Monitoraggio
+
+{% if monitoring %}
+**Strumenti:**
+{% for tool in monitoring.get("tools", []) %}
+- {{ tool }}
+{% endfor %}
+
+**Metriche Chiave:**
+{% for metric in monitoring.get("key_metrics", []) %}
+- {{ metric }}
+{% endfor %}
+
+**Allarmi:**
+{% for alert in monitoring.get("alerts", []) %}
+- {{ alert }}
+{% endfor %}
+{% else %}
+[Monitoraggio da definire]
+{% endif %}

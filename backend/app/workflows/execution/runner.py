@@ -24,6 +24,7 @@ from app.agents.lead_writer.agent import LeadWriterAgent
 from app.agents.procurement.agent import ProcurementAgent
 from app.agents.quality.agent import QualityAgent
 from app.agents.requirement.agent import RequirementAgent
+from app.core.app_config import app_cfg
 from app.skills.validation.validation_skill import (
     detect_placeholder_content,
     score_requirement_richness,
@@ -153,7 +154,7 @@ class WorkflowRunner:
                 # to False on their own; only completeness checks block the flow)
                 sla = ctx.enriched_requirements.get("sla", {})
                 if sla:
-                    sla_val = validate_sla_consistency(sla)
+                    sla_val = validate_sla_consistency(sla, document_type)
                     if not sla_val.valid:
                         validation.issues.extend(sla_val.issues)
                     validation.warnings.extend(sla_val.warnings)
@@ -162,7 +163,29 @@ class WorkflowRunner:
                 richness = score_requirement_richness(ctx.enriched_requirements)
                 await self._emit(workflow_id, "richness_score", {"score": round(richness, 2)})
 
+                log.info(
+                    "validation_result",
+                    workflow_id=workflow_id,
+                    valid=validation.valid,
+                    confidence=validation.confidence,
+                    missing=validation.missing_fields,
+                    issues_count=len(validation.issues),
+                    warnings_count=len(validation.warnings),
+                    retry_count=ctx.retry_count,
+                )
+
                 if validation.valid:
+                    await self._emit(
+                        workflow_id,
+                        "validation_result",
+                        {
+                            "valid": True,
+                            "confidence": validation.confidence,
+                            "missing_fields": validation.missing_fields,
+                            "issues": validation.issues,
+                            "warnings": validation.warnings,
+                        },
+                    )
                     old = ctx.state
                     self.sm.trigger(ctx, WorkflowTrigger.VALIDATION_PASSED)
                     await self._persist_state(
@@ -173,9 +196,11 @@ class WorkflowRunner:
                         workflow_id,
                         "validation_failed",
                         {
+                            "valid": False,
                             "issues": validation.issues,
                             "missing_fields": validation.missing_fields,
                             "confidence": validation.confidence,
+                            "warnings": validation.warnings,
                         },
                     )
                     old = ctx.state
@@ -354,18 +379,78 @@ class WorkflowRunner:
                     await self._emit(workflow_id, "state_change", {"state": ctx.state})
 
                     if ctx.state == WorkflowState.FAILED:
-                        raise RuntimeError("Quality retry budget exhausted")
+                        # Graceful degradation: if quality score is in the
+                        # tolerance zone (>= configured threshold), complete
+                        # with warnings instead of hard-failing.
+                        if ctx.quality_score >= app_cfg(
+                            "runner.graceful_degradation_threshold", 0.5
+                        ):
+                            ctx.state = WorkflowState.COMPLETED
+                            await self._emit(
+                                workflow_id,
+                                "quality_report",
+                                {
+                                    "score": ctx.quality_score,
+                                    "passed": True,
+                                    "issues": ctx.quality_issues,
+                                    "suggestions": [],
+                                    "section_scores": {},
+                                    "needs_enrichment": False,
+                                    "warnings": [
+                                        "Completed with warnings — quality retries exhausted "
+                                        f"but score ({ctx.quality_score:.0%}) is acceptable."
+                                    ],
+                                },
+                            )
+                            await self._emit(
+                                workflow_id,
+                                "state_change",
+                                {"state": ctx.state, "note": "completed_with_warnings"},
+                            )
+                            log.info(
+                                "quality.graceful_completion",
+                                workflow_id=workflow_id,
+                                score=ctx.quality_score,
+                            )
+                        else:
+                            raise RuntimeError("Quality retry budget exhausted")
 
             # COMPLETED
+            # Persist document content so export endpoints can retrieve it
+            try:
+                from app.db.models import Workflow as WFModel
+
+                wf_row = await self.db.get(WFModel, uuid.UUID(workflow_id))
+                if wf_row:
+                    wf_row.metadata_ = {
+                        **(wf_row.metadata_ or {}),
+                        "document_content": ctx.draft_content or "",
+                    }
+                    self.db.add(wf_row)
+                    await self.db.commit()
+            except Exception as save_exc:
+                log.warning("draft_content_persist_failed", error=str(save_exc))
+
             await self._emit(
                 workflow_id,
                 "completed",
-                {"workflow_id": workflow_id, "quality_score": ctx.quality_score},
+                {
+                    "workflow_id": workflow_id,
+                    "quality_score": ctx.quality_score,
+                    "document_content": ctx.draft_content or "",
+                },
             )
             return {"status": "completed", "quality_score": ctx.quality_score}
 
         except Exception as exc:
-            log.error("workflow_failed", workflow_id=workflow_id, error=str(exc))
+            import traceback
+
+            log.error(
+                "workflow_failed",
+                workflow_id=workflow_id,
+                error=str(exc),
+                traceback=traceback.format_exc(),
+            )
             old = ctx.state
             # Only trigger fatal_error if the state machine allows it from the current state
             if self.sm.can_trigger(ctx, WorkflowTrigger.FATAL_ERROR):

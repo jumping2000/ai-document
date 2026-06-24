@@ -55,7 +55,7 @@ def flat_llm_output() -> dict:
                 "constraint": "",
             },
         ],
-        "sla": {"availability": "99.9%", "rto": "4h", "rpo": "1h"},
+        "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
         "security_requirements": ["MFA obbligatorio", "Crittografia AES-256"],
         "compliance": ["ISO 27001", "GDPR"],
         "timeline": {"go_live": "2026-06-01"},
@@ -132,7 +132,7 @@ class TestFullPipeline:
             "technical_requirements": [
                 {"id": "TR-1", "category": "C", "description": "D"},
             ],
-            "sla": {"availability": "99.9%"},
+            "sla": {"K1": "99%", "K2": "1%", "K3": "0"},
             "security_compliance": {"standards": ["ISO 27001"]},
             "timeline": {"go_live": "2026-01-01"},
         }

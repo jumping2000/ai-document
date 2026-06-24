@@ -45,19 +45,39 @@ required_fields:
   - path: "technical_requirements"
     label: "Requisiti Tecnici"
     min_items: 1
-  - path: "sla.availability"
-    label: "Disponibilità SLA"
+  - path: "sla.K1"
+    label: "Qualità del Codice"
+  - path: "sla.K2"
+    label: "Tasso Difettosità Esercizio"
+  - path: "sla.K3"
+    label: "Ritardo Consegna Deliverable"
   - path: "security_compliance.standards"
     label: "Standard Sicurezza"
   - path: "timeline.go_live"
     label: "Data Go-Live"
 
+# ──────────────────────────────────────────────────────────────────────────────
+# SLA RULES — Definisce quali KPI/KPO devono essere presenti nella sezione SLA
+# ──────────────────────────────────────────────────────────────────────────────
+# expected_kpis: campi obbligatori — la loro assenza genera un errore di validazione
+# expected_kpos: campi opzionali — la loro assenza genera un warning
+# Il sistema NON impone vincoli sui valori (range, RTO>RPO, etc.)
+# ──────────────────────────────────────────────────────────────────────────────
 sla_rules:
-  availability:
-    min: 95.0
-    max: 99.999
-    unit: percent
-  rto_gt_rpo: true
+  expected_kpis:
+    - field: "K1"
+      label: "Qualità del Codice"
+    - field: "K2"
+      label: "Tasso Difettosità Esercizio"
+    - field: "K3"
+      label: "Ritardo Consegna Deliverable"
+  expected_kpos:
+    - field: "K1"
+      label: "99%"
+    - field: "K2"
+      label: "1%"
+    - field: "K3"
+      label: "0"
 
 quality_checks:
   - id: functional_requirements_addressed
@@ -84,3 +104,56 @@ quality_checks:
   - id: acceptance_criteria
     label: "Criteri di accettazione misurabili"
     enabled: true
+
+# ──────────────────────────────────────────────────────────────────────────────
+# RETRIEVAL QUERIES — Query template per la knowledge base (MCP / RAG)
+# ──────────────────────────────────────────────────────────────────────────────
+# Queste query vengono eseguite automaticamente da RetrievalSkill prima della
+# generazione del documento. L'obiettivo è recuperare dal KB contesto tecnico
+# utile: progetti simili, stack tecnologici, pattern architetturali, best
+# practice di integrazione — NON normativa o compliance.
+#
+# PLACEHOLDER: usa la sintassi {path.to.field} per estrarre valori dal dict
+# dei requisiti raccolti dall'utente. Il path usa la dot-notation (come i
+# required_fields sopra). Se il campo non esiste o è vuoto, la query viene
+# saltata automaticamente.
+#
+# ESEMPI DI PLACEHOLDER:
+#   {project.title}              → "Sistema di Gestione Documentale"
+#   {project.organization}       → "Comune di Roma"
+#   {scope.objectives}           → lista di obiettivi (usa solo il primo)
+#   {technical_requirements}     → lista di requisiti tecnici
+#   {functional_requirements}    → lista di requisiti funzionali
+#   {integrations}               → lista di integrazioni [{system, protocol, ...}]
+#   {sla.K1}                     → "99%"
+#   {security_compliance.standards} → ["ISO 27001", "GDPR"]
+#
+# ESEMPI DI QUERY:
+#   query: "progetti simili a {project.title} architettura microservizi"
+#   → Se project.title = "Piattaforma E-Commerce" diventa:
+#     "progetti simili a Piattaforma E-Commerce architettura microservizi"
+#
+#   query: "integrazione {integrations[0].system} best practice API REST"
+#   → Se integrations[0].system = "SAP" diventa:
+#     "integrazione SAP best practice API REST"
+#
+# NOTA: i placeholder annidati con [0] NON sono supportati. Per le liste usa
+# il placeholder senza indice (es. {integrations}) e il sistema lo risolverà
+# al primo elemento della lista.
+# ──────────────────────────────────────────────────────────────────────────────
+retrieval_queries:
+  # Query sul progetto specifico — cerca progetti simili e pattern architetturali
+  - "progetti simili a {project.title} architettura e stack tecnologico"
+  - "best practice tecniche per {project.title} nel settore pubblico"
+
+  # Query sui requisiti tecnici — cerca soluzioni e approcci tecnici
+  - "soluzioni tecniche per {technical_requirements} in ambienti enterprise"
+
+  # Query sulle integrazioni — cerca pattern di integrazione noti
+  - "integrazione {integrations} pattern architetturali e API design"
+
+  # Query sullo stack tecnologico — cerca deployment e configurazione
+  - "deployment e configurazione stack tecnologico per applicazioni enterprise"
+
+  # Query sull'architettura — cerca riferimenti a progetti consolidati
+  - "architettura riferimento per sistemi ad alta disponibilità"

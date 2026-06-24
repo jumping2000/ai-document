@@ -6,7 +6,6 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { LanguageProvider } from './i18n/LanguageContext';
 import WorkflowMonitor from './pages/WorkflowMonitor';
 import MCPSettings from './pages/MCPSettings';
-import TemplateSettings from './pages/TemplateSettings';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -24,7 +23,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Routes>
               <Route path="/" element={<WorkflowMonitor />} />
               <Route path="/mcp" element={<MCPSettings />} />
-              <Route path="/templates" element={<TemplateSettings />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </BrowserRouter>

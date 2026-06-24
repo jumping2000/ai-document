@@ -51,11 +51,9 @@ def _make_full_enriched_requirements() -> EnrichedRequirements:
             },
         ],
         "sla": {
-            "availability": "99.9%",
-            "rto": "4h",
-            "rpo": "1h",
-            "response_time": "<200ms",
-            "custom_kpis": ["MTTR < 30min"],
+            "K1": "99%",
+            "K2": "1%",
+            "K3": "0",
         },
         "security_compliance": {
             "standards": ["ISO 27001", "GDPR"],
@@ -138,7 +136,7 @@ def test_enriched_requirements_shape():
     assert data["functional_requirements"][0]["id"] == "FR-001"
     assert data["functional_requirements"][0]["priority"] == "MUST"
     assert data["technical_requirements"][0]["category"] == "Architettura"
-    assert data["sla"]["availability"] == "99.9%"
+    assert data["sla"]["K1"] == "99%"
     assert data["security_compliance"]["standards"] == ["ISO 27001", "GDPR"]
     assert data["timeline"]["go_live"] == "2025-12-01"
 

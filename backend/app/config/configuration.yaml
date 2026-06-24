@@ -1,0 +1,59 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Application Configuration
+# ──────────────────────────────────────────────────────────────────────────────
+# All values here are OPTIONAL — hardcoded defaults exist in the code.
+# Env vars (from .env / docker-compose) still take highest precedence.
+# Edit this file to tune behavior without touching Python code.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Quality Agent ─────────────────────────────────────────────────────────────
+quality:
+  # Scores below this are always hard-fail (no tolerance zone)
+  severe_score_threshold: 0.4
+  # When score is below quality_threshold but above severe, check issue count
+  moderate_score_threshold: 0.5
+  # If issues > max_issues_threshold AND score < moderate → hard-fail
+  max_issues_threshold: 5
+  # Max characters of document content sent to LLM for review
+  max_content_length: 8000
+
+# ── Validation ────────────────────────────────────────────────────────────────
+validation:
+  # Minimum confidence to pass validation without warnings
+  confidence_threshold: 0.75
+
+# ── Runner / Workflow ─────────────────────────────────────────────────────────
+runner:
+  # When quality state goes FAILED but score >= this → complete with warnings
+  graceful_degradation_threshold: 0.5
+
+# ── Retrieval (MCP / RAG) ─────────────────────────────────────────────────────
+retrieval:
+  # Max documents to retrieve from knowledge base
+  max_docs: 8
+  # Max concurrent MCP queries (semaphore)
+  max_concurrency: 2
+  # Max results per individual search query
+  max_results_per_query: 3
+  # Max characters per retrieved document excerpt
+  max_excerpt_length: 500
+
+# ── Export (DOCX / PDF) ──────────────────────────────────────────────────────
+export:
+  docx:
+    font_family: "Calibri"
+    font_size: 10
+    title_font_size: 18
+    brand_color: "0x1A1A2E"
+    margin_top: 1.0       # inches
+    margin_bottom: 1.0
+    margin_left: 1.2
+    margin_right: 1.2
+  pdf:
+    page_size: "A4"
+    margin: 2.5            # cm
+    brand_color: "#1A1A2E"
+    title_font_size: 20
+    heading_font_size: 14
+    body_font_size: 10
+    small_font_size: 9

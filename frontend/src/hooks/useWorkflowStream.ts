@@ -11,6 +11,8 @@ export function useWorkflowStream(workflowId: string | null) {
     setAgentRunning,
     setAgentDone,
     setQualityReport,
+    setValidationResult,
+    setDocumentContent,
     pushEvent,
     setStreaming,
   } = useWorkflowStore();
@@ -45,7 +47,22 @@ export function useWorkflowStream(workflowId: string | null) {
         case 'quality_report':
           setQualityReport(msg.data as any);
           break;
+        case 'validation_result':
+        case 'validation_failed':
+          setValidationResult({
+            valid: !!(msg.data as Record<string, unknown>).valid,
+            confidence: Number((msg.data as Record<string, unknown>).confidence) || 0,
+            missing_fields: ((msg.data as Record<string, unknown>).missing_fields as string[]) ?? [],
+            issues: ((msg.data as Record<string, unknown>).issues as string[]) ?? [],
+            warnings: ((msg.data as Record<string, unknown>).warnings as string[]) ?? [],
+          });
+          break;
         case 'completed':
+          if (msg.data.document_content) {
+            setDocumentContent(msg.data.document_content as string);
+          }
+          setStreaming(false);
+          break;
         case 'failed':
           setStreaming(false);
           break;

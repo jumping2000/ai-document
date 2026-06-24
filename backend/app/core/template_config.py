@@ -20,8 +20,14 @@ if not TEMPLATES_DIR.is_absolute():
     # Fallback for tests where templates_base_path is relative
     TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
+OVERRIDES_DIR = Path(settings.documents_base_path) / "template_overrides"
+
 
 def _template_config_path(document_type: str) -> Path:
+    """Check override dir first (writable), then default (read-only)."""
+    override = OVERRIDES_DIR / document_type / "template.yaml"
+    if override.exists():
+        return override
     return TEMPLATES_DIR / document_type / "template.yaml"
 
 
@@ -29,8 +35,9 @@ def _template_config_path(document_type: str) -> Path:
 def load_template_config(document_type: str) -> dict[str, Any]:
     """Load template.yaml for a document type.
 
-    Falls back to deriving basic structure from the Jinja2 template
-    if no YAML sidecar exists.
+    Checks the writable override directory first, then the default
+    app-internal YAML sidecar. Falls back to deriving basic structure
+    from the Jinja2 template if no YAML sidecar exists.
     """
     config_path = _template_config_path(document_type)
     if config_path.exists():

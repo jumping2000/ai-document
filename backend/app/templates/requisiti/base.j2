@@ -77,12 +77,11 @@ Questo documento descrive i requisiti funzionali e tecnici per la realizzazione 
 
 ## 4. Requisiti Non Funzionali
 
-| Attributo | Valore Richiesto |
-|-----------|-----------------|
-| Disponibilità | {{ nfr.get("availability", "99.5%") }} |
-| RTO | {{ nfr.get("rto", "4h") }} |
-| RPO | {{ nfr.get("rpo", "1h") }} |
-| Tempo Risposta (p95) | {{ nfr.get("response_time", "< 3s") }} |
+| Indicatore | ID | Valore Richiesto |
+|------------|-----|-----------------|
+| Qualità del Codice | K1 | {{ nfr.get("K1", "99%") }} |
+| Tasso Difettosità Esercizio | K2 | {{ nfr.get("K2", "1%") }} |
+| Ritardo Consegna Deliverable | K3 | {{ nfr.get("K3", "0") }} |
 
 ---
 
@@ -172,7 +171,8 @@ Nessuna integrazione esterna richiesta.
 | Termine | Definizione |
 |---------|-------------|
 | SLA | Service Level Agreement |
-| RTO | Recovery Time Objective |
-| RPO | Recovery Point Objective |
+| K1 | Qualità del Codice (KPI) |
+| K2 | Tasso Difettosità Esercizio (KPI) |
+| K3 | Ritardo Consegna Deliverable (KPI) |
 | GDPR | General Data Protection Regulation (UE 2016/679) |
 | CAD | Codice dell'Amministrazione Digitale (D.Lgs 82/2005) |

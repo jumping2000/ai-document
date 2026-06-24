@@ -3,6 +3,7 @@ import type {
   AgentName,
   AgentStatus,
   QualityReport,
+  ValidationResult,
   Workflow,
   WorkflowEvent,
   WorkflowStateEnum,
@@ -13,6 +14,8 @@ interface WorkflowStore {
   activeWorkflow: Workflow | null;
   agentStatuses: Record<AgentName, AgentStatus>;
   qualityReport: QualityReport | null;
+  validationResult: ValidationResult | null;
+  documentContent: string;
   events: WorkflowEvent[];
   isStreaming: boolean;
 
@@ -25,6 +28,8 @@ interface WorkflowStore {
   setAgentRunning: (agent: AgentName) => void;
   setAgentDone: (agent: AgentName, duration_ms: number) => void;
   setQualityReport: (report: QualityReport) => void;
+  setValidationResult: (result: ValidationResult) => void;
+  setDocumentContent: (content: string) => void;
   pushEvent: (event: WorkflowEvent) => void;
   setStreaming: (v: boolean) => void;
   setWorkflows: (wfs: Workflow[]) => void;
@@ -43,6 +48,8 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
   activeWorkflow: null,
   agentStatuses: defaultAgentStatuses(),
   qualityReport: null,
+  validationResult: null,
+  documentContent: '',
   events: [],
   isStreaming: false,
   workflows: [],
@@ -72,6 +79,10 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
 
   setQualityReport: (report) => set({ qualityReport: report }),
 
+  setValidationResult: (result) => set({ validationResult: result }),
+
+  setDocumentContent: (content) => set({ documentContent: content }),
+
   pushEvent: (event) =>
     set((s) => ({ events: [...s.events.slice(-99), event] })),
 
@@ -84,6 +95,8 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
       activeWorkflow: null,
       agentStatuses: defaultAgentStatuses(),
       qualityReport: null,
+      validationResult: null,
+      documentContent: '',
       events: [],
       isStreaming: false,
     }),

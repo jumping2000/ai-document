@@ -7,21 +7,26 @@ POST /workflow/{id}/approve   — human-in-the-loop approval
 POST /workflow/{id}/retry     — manual retry from current state
 GET  /workflow/{id}/documents — list generated documents
 GET  /workflow/{id}/quality-report — latest quality report
+POST /workflow/{id}/export/{format} — export document to docx/pdf
+GET  /workflow/{id}/download/{format} — download exported file
 """
 
 from __future__ import annotations
 
 import asyncio
 import uuid
+from pathlib import Path
 from typing import Any
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db, AsyncSessionLocal
 from app.db.models import Workflow
+from app.db.session import AsyncSessionLocal, get_db
+from app.skills.export.export_skill import ExportSkill
 from app.workflows.execution.runner import WorkflowRunner
 
 log = structlog.get_logger(__name__)
@@ -30,8 +35,9 @@ router = APIRouter(prefix="/workflow", tags=["workflow"])
 
 # ── Request / Response schemas ────────────────────────────────────────────────
 
+
 class StartWorkflowRequest(BaseModel):
-    document_type: str = Field(..., pattern="^(capitolato|requisiti)$")
+    document_type: str = Field(..., pattern="^(capitolato|requisiti|documento)$")
     title: str = Field(..., min_length=5, max_length=500)
     raw_description: str = Field(..., min_length=20)
     form_data: dict[str, Any] = Field(default_factory=dict)
@@ -58,6 +64,10 @@ class RetryRequest(BaseModel):
     reason: str = ""
 
 
+class ExportRequest(BaseModel):
+    content: str | None = None  # Optional: frontend sends content directly
+
+
 # ── In-memory workflow store (replace with DB in production) ──────────────────
 # NOTE: For production use SQLAlchemy session + Redis pub/sub
 
@@ -65,6 +75,7 @@ _workflows: dict[str, dict[str, Any]] = {}
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
 
 @router.post("/start", status_code=status.HTTP_202_ACCEPTED)
 async def start_workflow(
@@ -159,7 +170,10 @@ async def approve_workflow(
     log.info("workflow_approval", workflow_id=workflow_id, action=action, comment=req.comment)
 
     wf.state = "COMPLETED" if req.approved else "FAILED"
-    wf.metadata_ = {**(wf.metadata_ or {}), "approval": {"approved": req.approved, "comment": req.comment}}
+    wf.metadata_ = {
+        **(wf.metadata_ or {}),
+        "approval": {"approved": req.approved, "comment": req.comment},
+    }
     db.add(wf)
     await db.commit()
     return {"workflow_id": workflow_id, "action": action}
@@ -223,3 +237,120 @@ async def get_quality_report(workflow_id: str) -> dict[str, Any]:
     if not report:
         raise HTTPException(status_code=404, detail="No quality report available yet")
     return report
+
+
+@router.post("/{workflow_id}/export/{format}")
+async def export_document(
+    workflow_id: str,
+    format: str,
+    body: ExportRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Export workflow document to docx or pdf. Returns the download URL."""
+    if format not in ("docx", "pdf"):
+        raise HTTPException(status_code=400, detail="Format must be 'docx' or 'pdf'")
+
+    try:
+        wf = await db.get(Workflow, uuid.UUID(workflow_id))
+    except Exception:
+        wf = None
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    if wf.state != "COMPLETED":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Workflow must be COMPLETED to export (current: {wf.state})",
+        )
+
+    # Priority: body content > DB metadata content
+    content = ""
+    if body and body.content:
+        content = body.content
+    if not content:
+        content = (wf.metadata_ or {}).get("document_content", "")
+    if not content:
+        raise HTTPException(status_code=400, detail="No document content available for export")
+
+    exporter = ExportSkill()
+    try:
+        if format == "docx":
+            file_path = await exporter.export_docx(
+                content=content,
+                title=wf.title,
+                workflow_id=workflow_id,
+                doc_type=wf.document_type,
+            )
+        else:
+            file_path = await exporter.export_pdf(
+                content=content,
+                title=wf.title,
+                workflow_id=workflow_id,
+                doc_type=wf.document_type,
+            )
+    except Exception as exc:
+        log.error("export_failed", workflow_id=workflow_id, format=format, error=str(exc))
+        raise HTTPException(status_code=500, detail=f"Export failed: {exc}")
+
+    # Persist file path in Document table for future downloads
+    from app.db.models import Document
+
+    doc = Document(
+        workflow_id=uuid.UUID(workflow_id),
+        name=f"{wf.title}.{format}",
+        format=format,
+        content_md=content if format == "docx" else "",
+        file_path=file_path,
+    )
+    db.add(doc)
+    await db.commit()
+
+    return {
+        "workflow_id": workflow_id,
+        "format": format,
+        "download_url": f"/api/v1/workflow/{workflow_id}/download/{format}",
+    }
+
+
+@router.get("/{workflow_id}/download/{format}")
+async def download_document(
+    workflow_id: str,
+    format: str,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    """Download an exported document file."""
+    if format not in ("docx", "pdf"):
+        raise HTTPException(status_code=400, detail="Format must be 'docx' or 'pdf'")
+
+    from sqlalchemy import select
+
+    from app.db.models import Document
+
+    stmt = (
+        select(Document)
+        .where(
+            Document.workflow_id == uuid.UUID(workflow_id),
+            Document.format == format,
+        )
+        .order_by(Document.created_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    doc_row = result.scalar_one_or_none()
+
+    if not doc_row or not doc_row.file_path:
+        raise HTTPException(
+            status_code=404, detail="Exported document not found. Call export first."
+        )
+
+    file_path = Path(doc_row.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File no longer exists on disk")
+
+    media_type = (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        if format == "docx"
+        else "application/pdf"
+    )
+    filename = f"{workflow_id[:8]}.{format}"
+    return FileResponse(path=str(file_path), media_type=media_type, filename=filename)

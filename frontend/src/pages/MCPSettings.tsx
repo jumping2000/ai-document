@@ -96,10 +96,10 @@ export default function MCPSettings() {
         setAvailableKbs([]);
       } else {
         const err = await res.json();
-        setError(err.detail || 'Connection failed');
+        setError(err.detail || t('mcp.connectionFailed'));
       }
     } catch (err) {
-      setError('Network error');
+      setError(t('mcp.networkError'));
     } finally {
       setSaving(false);
     }
@@ -125,10 +125,10 @@ export default function MCPSettings() {
         }
       } else {
         const err = await res.json();
-        setError(err.detail || 'Test failed');
+        setError(err.detail || t('mcp.testFailed'));
       }
     } catch (err) {
-      setError('Network error');
+      setError(t('mcp.networkError'));
     } finally {
       setTestingKbs(false);
     }
@@ -149,7 +149,7 @@ export default function MCPSettings() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this connection?')) return;
+    if (!confirm(t('mcp.deleteConfirm'))) return;
     try {
       const res = await fetch(`${API_BASE}/mcp/connections/${id}`, {
         method: 'DELETE',
@@ -184,10 +184,10 @@ export default function MCPSettings() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-zinc-900 dark:text-white">
-            Knowledge Sources (MCP)
+            {t('mcp.title')}
           </h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-            Connect to MCP servers to enrich document generation with external knowledge
+            {t('mcp.subtitle')}
           </p>
         </div>
         <button
@@ -196,7 +196,7 @@ export default function MCPSettings() {
                      text-white text-sm font-medium rounded-xl transition-colors"
         >
           <Plus size={16} />
-          Add Connection
+          {t('mcp.addConnection')}
         </button>
       </div>
 
@@ -302,7 +302,7 @@ export default function MCPSettings() {
                              text-zinc-700 dark:text-zinc-300 rounded-lg transition-colors"
                 >
                   {testingKbs ? <Loader2 size={12} className="animate-spin" /> : <Database size={12} />}
-                  {testingKbs ? 'Testing...' : 'Test & Discover KBs'}
+                  {testingKbs ? t('mcp.testingKb') : t('mcp.testKb')}
                 </button>
               </div>
 
@@ -310,7 +310,7 @@ export default function MCPSettings() {
               {availableKbs.length > 0 && (
                 <div className="md:col-span-2">
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5">
-                    Knowledge Base
+                    {t('mcp.knowledgeBase')}
                   </label>
                   <select
                     value={formData.default_kb_id}
@@ -321,12 +321,12 @@ export default function MCPSettings() {
                   >
                     {availableKbs.map(kb => (
                       <option key={kb.id} value={kb.id}>
-                        {kb.name} {kb.documents !== undefined ? `(${kb.documents} docs)` : ''}
+                        {kb.name} {kb.documents !== undefined ? `(${kb.documents} ${t('mcp.docs')})` : ''}
                       </option>
                     ))}
                   </select>
                   <p className="text-[10px] text-emerald-500 mt-1">
-                    ✓ KB selezionata: {availableKbs.find(k => k.id === formData.default_kb_id)?.name || 'none'}
+                    {t('mcp.kbSelected')} {availableKbs.find(k => k.id === formData.default_kb_id)?.name || '—'}
                   </p>
                 </div>
               )}
