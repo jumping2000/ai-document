@@ -1,6 +1,6 @@
 # AI Document Platform
 
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Enterprise AI platform for automated IT procurement document generation.**
@@ -257,10 +257,10 @@ ai-document/
 │       ├── i18n/             # Italian/English translations
 │       └── types/            # TypeScript interfaces
 ├── docs/                     # Documentation
-│   ├── architecture/ARCHITECTURE.md
-│   ├── components/backend.md
-│   ├── components/frontend.md
-│   └── API_REFERENCE.md
+│   ├── ARCHITECTURE.md
+│   ├── API_REFERENCE.md
+│   ├── backend.md
+│   └── frontend.md
 ├── nginx/                    # Nginx config + .htpasswd
 ├── scripts/                  # Example workflow, MCP stub, init.sql
 ├── docker-compose.yml        # Full stack deployment

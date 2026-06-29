@@ -119,6 +119,7 @@ Connects to `ws://host/ws/workflow/{workflowId}` and dispatches events to the Zu
 | `agent_start` | `setAgentRunning(agent)` |
 | `agent_done` | `setAgentDone(agent, duration_ms)` |
 | `quality_report` | `setQualityReport(data)` |
+| `pending_approval` | (no store action — frontend shows ApprovalPanel based on state) |
 | `validation_result` / `validation_failed` | `setValidationResult(data)` |
 | `completed` | `setDocumentContent(data.content)`, `setStreaming(false)` |
 | `failed` | `setStreaming(false)` |
@@ -145,9 +146,10 @@ Response: `{workflow_id, state}` — sets `activeWorkflowId`, navigates to Monit
 #### Tab 2: Monitor (Live Execution)
 
 **Left Column (2/3):**
-1. **StateRail:** 7-step vertical progress indicator
+1. **StateRail:** 9-step vertical progress indicator (INIT → ... → PENDING_APPROVAL → COMPLETED)
    - Completed: filled green circle ✓
    - Active: pulsing indigo-500 border
+   - Pending Approval: amber #f59e0b (awaiting human action)
    - Pending: gray outline
 2. **Agent Grid:** 5 cards (orchestrator, requirement, procurement, lead_writer, quality)
    - Animated border glow when running (framer-motion)
@@ -157,6 +159,12 @@ Response: `{workflow_id, state}` — sets `activeWorkflowId`, navigates to Monit
    - Color: green (passed), orange (>50%), red (<50%)
    - Badge: "✓ APPROVATO" | "✗ REVISIONE"
 4. **Quality Issues:** First 3 issues by severity
+5. **Approval Panel** (shown when state is `PENDING_APPROVAL`):
+   - Amber-colored card with clock icon
+   - Quality score + issues/suggestions counts
+   - "✓ APPROVA" / "✗ RESPINGI" buttons
+   - Optional comment textarea
+   - Calls `POST /api/v1/workflow/{id}/approve`
 
 **Right Column (1/3):**
 - **Event Log:** Last 20 events, reverse-chronological
@@ -228,7 +236,7 @@ Template configuration UI for document types.
 2. **Quality Checks:** Enable/disable individual checks
 3. **Required Fields:** Add/edit/remove fields (path, label, min_items)
 4. **Validation Preview:** JSON textarea + "Test" button → shows valid/invalid + confidence + issues/warnings
-5. **SLA Rules:** Read-only tables of KPIs (K1, K2, K3) and KPOs
+5. **SLA Rules:** Free-form metrics list ({metric, target, note}[]). Obligatory for capitolato and requisiti.
 
 **Message display:** Success (green) or Error (red) alerts.
 
@@ -280,10 +288,11 @@ Template configuration UI for document types.
 - `app` — app title, description, version
 - `nav` — tab labels, form, monitor, document, knowledge, templates
 - `form` — new document, title, description, type selector, submit
-- `state` — workflow states (INIT, BRIEFING, etc.)
+- `state` — workflow states (INIT, BRIEFING, ..., PENDING_APPROVAL)
 - `monitor` — live status, agent cards, event log
 - `agent` — agent names (orchestrator, requirement, etc.)
 - `quality` — quality report labels, score, issues
+- `approval` — approval panel title, approve/reject buttons, comment, status messages
 - `document` — document viewer, export, download
 - `mcp` — 24+ keys for connection management
 - `template` — 30+ keys for configuration
@@ -295,7 +304,7 @@ Template configuration UI for document types.
 
 ### Workflow & States
 ```typescript
-WorkflowStateEnum = 'INIT' | 'BRIEFING' | 'ENRICHMENT' | 'VALIDATION' | 'WRITING' | 'QUALITY_ANALYSIS' | 'COMPLETED' | 'FAILED'
+WorkflowStateEnum = 'INIT' | 'BRIEFING' | 'ENRICHMENT' | 'VALIDATION' | 'WRITING' | 'QUALITY_ANALYSIS' | 'PENDING_APPROVAL' | 'COMPLETED' | 'FAILED'
 DocumentType = 'capitolato' | 'requisiti' | 'documento'
 Workflow { workflow_id, state, document_type, title, retry_count, quality_score, created_at, updated_at }
 ```

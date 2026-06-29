@@ -203,6 +203,7 @@ Events emitted as JSON:
 {"event": "agent_start", "data": {"agent": "requirement"}}
 {"event": "agent_done", "data": {"agent": "requirement", "duration_ms": 1200}}
 {"event": "quality_report", "data": {"score": 0.92, "passed": true}}
+{"event": "pending_approval", "data": {"score": 0.92, "issues": [...], "suggestions": [...]}}
 {"event": "completed", "data": {"quality_score": 0.92}}
 {"event": "failed", "data": {"error": "..."}}
 ```
@@ -218,9 +219,11 @@ Implementation: global `_event_queues: dict[str, list[asyncio.Queue]]` per workf
 **Phase:** BRIEFING
 **Output:** `RequirementResult` {requirements, summary, missing_fields, confidence}
 
-Canonical schema includes 14 top-level sections: project, scope, functional_requirements, technical_requirements, sla (K1/K2/K3), security_compliance, timeline, integrations, stakeholders, constraints, regulatory_references, evaluation_criteria, budget.
+Canonical schema includes 14 top-level sections: project, scope, functional_requirements, technical_requirements, sla (free-form metrics[] with {metric, target, note}), security_compliance, timeline, integrations, stakeholders, constraints, regulatory_references, evaluation_criteria, budget.
 
 `normalize_to_canonical(raw)` maps flat keys to nested paths. Confidence = critical filled / total critical fields.
+
+Also extracts `search_terms` — a list of specific technologies, products, standards, and systems mentioned in user input (max 10). These terms are passed to the RetrievalSkill for dynamic MCP queries.
 
 ### ProcurementAgent (`agents/procurement/agent.py`)
 
@@ -253,17 +256,17 @@ Fallback templates (hardcoded) for capitolato (11 sections), requisiti (6 sectio
 **Phase:** QUALITY_ANALYSIS
 **Output:** `QualityReport` {score, passed, issues, suggestions, section_scores, needs_enrichment, warnings}
 
-Checklist (8 items): functional coverage, SLA values, security standards, structure, contradictions, technical constraints, stakeholders, measurable acceptance criteria. Scoring: LLM-based, threshold at 0.75. Graceful degradation: <0.4 = hard failure, 0.4-0.75 = pass with warnings, ≥0.75 = pass. `needs_enrichment` flag triggers re-enrichment instead of re-writing.
+Checklist (8 items): functional coverage, SLA metrics with measurable targets, security standards, structure, contradictions, technical constraints, stakeholders, measurable acceptance criteria. Scoring: LLM-based, threshold at 0.75. Graceful degradation: <0.4 = hard failure, 0.4-0.75 = pass with warnings, ≥0.75 = pass. `needs_enrichment` flag triggers re-enrichment instead of re-writing.
 
 ---
 
 ## State Machine (`workflows/state_machine/machine.py`)
 
-**States enum (StrEnum):** INIT, BRIEFING, ENRICHMENT, VALIDATION, WRITING, QUALITY_ANALYSIS, COMPLETED, FAILED
+**States enum (StrEnum):** INIT, BRIEFING, ENRICHMENT, VALIDATION, WRITING, QUALITY_ANALYSIS, PENDING_APPROVAL, COMPLETED, FAILED
 
 **Triggers enum (StrEnum):** START, REQUIREMENTS_COLLECTED, ENRICHMENT_DONE, VALIDATION_PASSED, VALIDATION_FAILED, WRITING_DONE, QUALITY_PASSED, QUALITY_FAILED_WRITING, QUALITY_FAILED_ENRICHMENT, FATAL_ERROR, HUMAN_APPROVED
 
-**WorkflowContext:** `@dataclass` with workflow_id, document_type, state, retry_count, writing_retry_count, enrichment_retry_count, max_retries, quality_threshold, requirements, enriched_requirements, draft_content, quality_score, quality_issues, human_approval_required, metadata.
+**WorkflowContext:** `@dataclass` with workflow_id, document_type, state, retry_count, writing_retry_count, enrichment_retry_count, max_retries, quality_threshold, requirements, enriched_requirements, draft_content, quality_score, quality_issues, human_approval_required, human_approved, metadata.
 
 **Key methods:** `trigger(ctx, trigger) → new_state`, `can_trigger(ctx, trigger) → bool`, `terminal_states() → {COMPLETED, FAILED}`.
 
@@ -280,9 +283,10 @@ Execution loop:
 2. Steps through states, calling agent methods
 3. Validation loop: re-collects if validation fails
 4. Writing/Quality loop: re-writes or re-enriches based on quality feedback
-5. Graceful degradation if retries exhausted but score > 0.5
-6. Persists state transitions + audit logs to DB
-7. Emits SSE events for each state transition, agent start/done, quality reports
+5. After QA passes: transitions to PENDING_APPROVAL, creates `asyncio.Event`, awaits human approval
+6. On approval: transitions to COMPLETED, persists document, emits completed event
+7. On rejection/timeout: transitions to FAILED
+8. Graceful degradation if retries exhausted but score > 0.5
 
 Event emissions via `_emit(workflow_id, event, data)` → broadcasts to all registered asyncio.Queues via global `_event_queues`.
 
@@ -293,7 +297,7 @@ Event emissions via `_emit(workflow_id, event, data)` → broadcasts to all regi
 ### Validation Skill (`skills/validation/`)
 
 - `validate_requirements_completeness()` — checks required_fields from template.yaml, enforces min_items, returns `ValidationResult` with confidence
-- `validate_sla_consistency()` — validates SLA has expected KPI/KPO fields (presence only, no value constraints)
+- `validate_sla_metrics()` — validates free-form SLA metrics list (type-aware: documento skips validation, capitolato/requisiti require ≥1 metric with metric+target)
 - `validate_document_sections()` — checks required sections present in markdown via regex
 - `detect_placeholder_content()` — finds [TBD], [TODO], [PLACEHOLDER]
 - `score_requirement_richness()` — weighted 0.0–1.0: 30% functional_reqs, 20% technical_reqs, 15% SLA detail, 10% integrations, 10% stakeholders, 10% security, 5% timeline

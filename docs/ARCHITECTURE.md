@@ -19,11 +19,11 @@ Supports three document types: **Capitolato di Gara** (procurement specification
                              │ HTTP / WebSocket
 ┌────────────────────────────▼────────────────────────────────────┐
 │                       FASTAPI BACKEND                           │
-│  /api/v1/workflow/*   — workflow lifecycle                       │
+│  /api/v1/workflow/*   — workflow lifecycle                      │
 │  /api/v1/mcp/*        — MCP connection management               │
 │  /api/v1/templates/*  — template configuration                  │
-│  /ws/workflow/{id}    — real-time event streaming                │
-│  /health              — health check                             │
+│  /ws/workflow/{id}    — real-time event streaming               │
+│  /health              — health check                            │
 └────────────────────────────┬────────────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -31,9 +31,9 @@ Supports three document types: **Capitolato di Gara** (procurement specification
 │                                                                 │
 │  StateMachine → drives state transitions with guards            │
 │                                                                 │
-│  INIT → BRIEFING → ENRICHMENT → VALIDATION → WRITING → QA → ✓  │
-│              ↑_________↑__________↑           ↑______↑          │
-│                    (retry loops)            (retry loop)         │
+│  INIT → BRIEFING → ENRICHMENT → VALIDATION → WRITING → QA → PENDING → ✓  │
+│              ↑_________↑__________↑           ↑______↑           │         │
+│                    (retry loops)            (retry loop)      (approval)    │
 └──────┬─────────┬──────────┬──────────┬──────────┬───────────────┘
        │         │          │          │          │
   ┌────▼───┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐
@@ -75,6 +75,7 @@ Each type is configured via `templates/{type}/template.yaml` (structure, validat
 | **Orchestrator** | VALIDATION | WorkflowContext | validates completeness via internal LLM agent |
 | **LeadWriter** | WRITING | enriched_requirements, quality_issues | `WriterResult` — markdown content, sections, docx_path, pdf_path |
 | **Quality** | QUALITY_ANALYSIS | content, requirements, document_type | `QualityReport` — score, passed, issues, suggestions, section_scores |
+| **Human** | PENDING_APPROVAL | quality_report | approve / reject via `POST /workflow/{id}/approve` |
 
 ### Requirement Agent
 
@@ -83,14 +84,14 @@ Collects and structures raw user input into the canonical schema:
 - **scope**: objectives, in_scope, out_of_scope
 - **functional_requirements**: id, title, description, priority (MUST/SHOULD/COULD)
 - **technical_requirements**: id, category, description, constraint
-- **sla**: K1 (Qualità del Codice), K2 (Tasso Difettosità), K3 (Ritardo Consegna)
+- **sla**: metrics (list of {metric, target, note}), penalties
 - **security_compliance**: standards, requirements, data_classification
 - **timeline**: project_start, go_live, milestones
 - **integrations**: system, type, protocol
 - **stakeholders**: role, responsibilities
 - **constraints**, **regulatory_references**, **evaluation_criteria**, **budget**
 
-Critical fields (used for confidence scoring): `project.title`, `project.organization`, `scope.objectives`, `functional_requirements`, `technical_requirements`, `sla.K1`, `sla.K2`, `sla.K3`, `security_compliance.standards`, `timeline.go_live`.
+Critical fields (used for confidence scoring): `project.title`, `project.organization`, `scope.objectives`, `functional_requirements`, `technical_requirements`, `security_compliance.standards`, `timeline.go_live`.
 
 ### Procurement Agent
 
@@ -134,17 +135,19 @@ VALIDATION     ──[VALIDATION_PASSED]─────────────�
 VALIDATION     ──[VALIDATION_FAILED, retry<3]──────► BRIEFING (loop)
 VALIDATION     ──[VALIDATION_FAILED, retry≥3]──────► FAILED
 WRITING        ──[WRITING_DONE]────────────────────► QUALITY_ANALYSIS
-QUALITY_ANALYSIS ──[QUALITY_PASSED]────────────────► COMPLETED
+QUALITY_ANALYSIS ──[QUALITY_PASSED]────────────────► PENDING_APPROVAL
 QUALITY_ANALYSIS ──[QUALITY_FAILED_WRITING, retry<3]► WRITING (loop)
 QUALITY_ANALYSIS ──[QUALITY_FAILED_WRITING, retry≥3]► FAILED
 QUALITY_ANALYSIS ──[QUALITY_FAILED_ENRICHMENT, retry<3]► ENRICHMENT (loop)
 QUALITY_ANALYSIS ──[QUALITY_FAILED_ENRICHMENT, retry≥3]► FAILED
+PENDING_APPROVAL ──[HUMAN_APPROVED, guard: approved]──► COMPLETED
+PENDING_APPROVAL ──[HUMAN_APPROVED, guard: !approved]─► FAILED
 ANY (non-terminal) ──[FATAL_ERROR]────────────────► FAILED
 ```
 
 **Triggers enum:** `START`, `REQUIREMENTS_COLLECTED`, `ENRICHMENT_DONE`, `VALIDATION_PASSED`, `VALIDATION_FAILED`, `WRITING_DONE`, `QUALITY_PASSED`, `QUALITY_FAILED_WRITING`, `QUALITY_FAILED_ENRICHMENT`, `FATAL_ERROR`, `HUMAN_APPROVED`
 
-**Human-in-the-loop:** the `QUALITY_ANALYSIS` → `COMPLETED` transition requires `HUMAN_APPROVED` trigger via `POST /workflow/{id}/approve`.
+**Human-in-the-loop:** the `QUALITY_ANALYSIS` → `PENDING_APPROVAL` transition happens automatically after QA passes. The workflow then waits for `HUMAN_APPROVED` trigger via `POST /workflow/{id}/approve`. The runner uses an `asyncio.Event` to block until the approval endpoint sets it. On server restart, the endpoint falls back to direct DB state transition.
 
 ---
 
@@ -185,12 +188,8 @@ required_fields:
     min_items: 3
 
 sla_rules:
-  expected_kpis:
-    - field: K1
-      label: Qualità del Codice
-  expected_kpos:
-    - field: K2
-      label: Tasso Difettosità
+  # SLA metrics are free-form: {metric, target, note}[]
+  # Obligatory for capitolato and requisiti; not required for documento
 
 quality_checks:
   - id: sla_values
@@ -222,7 +221,7 @@ Uses the enriched requirements dict as template context. Produces the final mark
 | Function | Purpose |
 |----------|---------|
 | `validate_requirements_completeness()` | Checks required_fields from template.yaml, enforces min_items |
-| `validate_sla_consistency()` | Validates SLA has expected KPI/KPO fields (presence only) |
+| `validate_sla_metrics()` | Validates free-form SLA metrics list (type-aware: documento skips) |
 | `validate_document_sections()` | Checks required sections present in markdown via regex |
 | `detect_placeholder_content()` | Finds [TBD], [TODO], [PLACEHOLDER] in content |
 | `score_requirement_richness()` | Computes 0.0–1.0 score (weighted: 30% functional, 20% technical, 15% SLA, 10% integrations, 10% stakeholders, 10% security, 5% timeline) |
@@ -232,7 +231,8 @@ Uses the enriched requirements dict as template context. Produces the final mark
 Builds KB context from requirements:
 1. Loads `retrieval_queries` from template.yaml
 2. Resolves `{placeholder}` tokens using dot-notation from requirements
-3. Runs queries in parallel (Semaphore-limited, max 2 concurrent)
+3. Appends dynamic `search_terms` from RequirementAgent (technologies, products, standards extracted from user text)
+4. Runs queries in parallel (Semaphore-limited, max 2 concurrent)
 4. Deduplicates and sorts by relevance_score
 5. Returns `RetrievedContext` with formatted markdown
 
@@ -323,6 +323,7 @@ Implemented via in-process `asyncio.Queue` per workflow; for multi-worker deploy
 | `placeholders_detected` | `{placeholders: [...]}` |
 | `document_sections_warning` | `{sections: [...]}` |
 | `quality_report` | `{score: 0.92, passed: true, issues: [...]}` |
+| `pending_approval` | `{score: 0.92, issues: [...], suggestions: [...]}` |
 | `completed` | `{quality_score: 0.92}` |
 | `failed` | `{error: "..."}` |
 | `heartbeat` | `{}` (30s timeout) |

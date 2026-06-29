@@ -71,7 +71,7 @@ Get current workflow state and metadata.
 
 #### `POST /workflow/{id}/approve`
 
-Human-in-the-loop approval gate. Only valid when state is `QUALITY_ANALYSIS`.
+Human-in-the-loop approval gate. Only valid when state is `PENDING_APPROVAL`.
 
 **Request Body:**
 ```json
@@ -85,10 +85,15 @@ Human-in-the-loop approval gate. Only valid when state is `QUALITY_ANALYSIS`.
 ```json
 {
   "workflow_id": "550e8400-...",
-  "state": "COMPLETED",
-  "...": "..."
+  "action": "approved"
 }
 ```
+
+If the runner is still in memory, the approval event wakes it and it completes the workflow. If the server restarted, the endpoint performs a direct DB transition from `PENDING_APPROVAL` to `COMPLETED` or `FAILED`.
+
+**Error Responses:**
+- `400` — Workflow not in `PENDING_APPROVAL` state
+- `404` — Workflow not found
 
 ---
 
@@ -400,6 +405,7 @@ Connection auto-closes on terminal events (completed/failed). 30s heartbeat time
 | `placeholders_detected` | `{"placeholders": ["[TBD]"]}` | Unfilled content found |
 | `document_sections_warning` | `{"sections": [...]}` | Missing sections warning |
 | `quality_report` | `{"score": 0.92, "passed": true, "issues": [...]}` | Quality analysis result |
+| `pending_approval` | `{"score": 0.92, "issues": [...], "suggestions": [...]}` | Awaiting human approval |
 | `completed` | `{"quality_score": 0.92}` | Workflow completed |
 | `failed` | `{"error": "..."}` | Workflow failed |
 | `heartbeat` | `{}` | Keep-alive (every 30s) |
