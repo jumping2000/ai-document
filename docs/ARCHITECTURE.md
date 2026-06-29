@@ -32,8 +32,14 @@ Supports three document types: **Capitolato di Gara** (procurement specification
 │  StateMachine → drives state transitions with guards            │
 │                                                                 │
 │  INIT → BRIEFING → ENRICHMENT → VALIDATION → WRITING → QA → PENDING → ✓  │
-│              ↑_________↑__________↑           ↑______↑           │         │
-│                    (retry loops)            (retry loop)      (approval)    │
+│                                                                 │
+│  Retry loops (max 3 ciascuno):                                  │
+│    ✗ VALIDATION ──────────────────────► BRIEFING                │
+│    ✗ QA (needs_enrichment) ───────────► ENRICHMENT              │
+│    ✗ QA (writing_fail) ───────────────► WRITING                 │
+│                                                                 │
+│  Human gate:                                                    │
+│    PENDING ──[approve]──► ✓    │    PENDING ──[reject]──► ✗    │
 └──────┬─────────┬──────────┬──────────┬──────────┬───────────────┘
        │         │          │          │          │
   ┌────▼───┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐
@@ -153,11 +159,11 @@ ANY (non-terminal) ──[FATAL_ERROR]──────────────
 
 ## Retry Budget
 
-| Loop | Counter | Max | Exhausted → |
-|------|---------|-----|-------------|
-| Validation | `ctx.retry_count` | 3 | FAILED |
-| Writing quality | `ctx.writing_retry_count` | 3 | FAILED |
-| Enrichment | `ctx.enrichment_retry_count` | 3 | FAILED |
+| Loop | Trigger | Counter | Max | Ritorna a | Esaurito → |
+|------|---------|---------|-----|-----------|------------|
+| Validation | `VALIDATION_FAILED` | `ctx.retry_count` | 3 | BRIEFING | FAILED |
+| Writing quality | `QUALITY_FAILED_WRITING` | `ctx.writing_retry_count` | 3 | WRITING | FAILED |
+| Enrichment | `QUALITY_FAILED_ENRICHMENT` | `ctx.enrichment_retry_count` | 3 | ENRICHMENT | FAILED |
 
 After all retries exhausted, graceful degradation may still allow completion if quality score > 0.5.
 
