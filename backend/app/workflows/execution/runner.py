@@ -46,6 +46,17 @@ log = structlog.get_logger(__name__)
 # SSE event bus: workflow_id → list of queues
 _event_queues: dict[str, list[asyncio.Queue]] = {}
 
+from dataclasses import dataclass
+
+
+@dataclass
+class _ApprovalEvent:
+    event: asyncio.Event
+    approved: bool = False
+
+
+_approval_events: dict[str, _ApprovalEvent] = {}
+
 
 class WorkflowRunner:
     """Drives a single workflow instance end-to-end."""
@@ -329,6 +340,40 @@ class WorkflowRunner:
                         self.sm.trigger(ctx, WorkflowTrigger.QUALITY_PASSED)
                         await self._persist_state(
                             workflow_id, old, ctx.state, WorkflowTrigger.QUALITY_PASSED.value
+                        )
+
+                        # Emit pending_approval event for the frontend
+                        await self._emit(
+                            workflow_id,
+                            "pending_approval",
+                            {
+                                "score": report.score,
+                                "issues": report.issues,
+                                "suggestions": report.suggestions,
+                                "needs_enrichment": report.needs_enrichment,
+                            },
+                        )
+
+                        # Create approval Event and wait for human decision
+                        approval = _ApprovalEvent(event=asyncio.Event())
+                        _approval_events[workflow_id] = approval
+                        ctx.human_approval_required = True
+
+                        try:
+                            timeout = app_cfg("approval.timeout_seconds", 3600)
+                            await asyncio.wait_for(approval.event.wait(), timeout=timeout)
+                        except TimeoutError:
+                            log.warning("approval_timeout", workflow_id=workflow_id)
+                            await self._emit(workflow_id, "failed", {"error": "approval_timeout"})
+                            return {"status": "failed", "error": "approval_timeout"}
+                        finally:
+                            _approval_events.pop(workflow_id, None)
+
+                        ctx.human_approved = approval.approved
+                        old = ctx.state
+                        self.sm.trigger(ctx, WorkflowTrigger.HUMAN_APPROVED)
+                        await self._persist_state(
+                            workflow_id, old, ctx.state, WorkflowTrigger.HUMAN_APPROVED.value
                         )
                     elif report.needs_enrichment:
                         old = ctx.state
