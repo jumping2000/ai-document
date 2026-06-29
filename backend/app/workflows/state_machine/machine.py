@@ -8,9 +8,9 @@ States:  INIT → BRIEFING → ENRICHMENT → VALIDATION → WRITING → QUALITY
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Callable
 
 import structlog
 
@@ -24,6 +24,7 @@ class WorkflowState(StrEnum):
     VALIDATION = "VALIDATION"
     WRITING = "WRITING"
     QUALITY_ANALYSIS = "QUALITY_ANALYSIS"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
@@ -47,8 +48,8 @@ class Transition:
     from_state: WorkflowState
     trigger: WorkflowTrigger
     to_state: WorkflowState
-    guard: Callable[["WorkflowContext"], bool] | None = None
-    action: Callable[["WorkflowContext"], None] | None = None
+    guard: Callable[[WorkflowContext], bool] | None = None
+    action: Callable[[WorkflowContext], None] | None = None
 
 
 @dataclass
@@ -67,6 +68,7 @@ class WorkflowContext:
     quality_score: float = 0.0
     quality_issues: list = field(default_factory=list)
     human_approval_required: bool = False
+    human_approved: bool = False
     metadata: dict = field(default_factory=dict)
 
 
@@ -80,35 +82,71 @@ class StateMachine:
     def __init__(self) -> None:
         self._transitions: list[Transition] = [
             Transition(WorkflowState.INIT, WorkflowTrigger.START, WorkflowState.BRIEFING),
-            Transition(WorkflowState.BRIEFING, WorkflowTrigger.REQUIREMENTS_COLLECTED, WorkflowState.ENRICHMENT),
-            Transition(WorkflowState.ENRICHMENT, WorkflowTrigger.ENRICHMENT_DONE, WorkflowState.VALIDATION),
-            Transition(WorkflowState.VALIDATION, WorkflowTrigger.VALIDATION_PASSED, WorkflowState.WRITING),
             Transition(
-                WorkflowState.VALIDATION, WorkflowTrigger.VALIDATION_FAILED, WorkflowState.BRIEFING,
+                WorkflowState.BRIEFING,
+                WorkflowTrigger.REQUIREMENTS_COLLECTED,
+                WorkflowState.ENRICHMENT,
+            ),
+            Transition(
+                WorkflowState.ENRICHMENT, WorkflowTrigger.ENRICHMENT_DONE, WorkflowState.VALIDATION
+            ),
+            Transition(
+                WorkflowState.VALIDATION, WorkflowTrigger.VALIDATION_PASSED, WorkflowState.WRITING
+            ),
+            Transition(
+                WorkflowState.VALIDATION,
+                WorkflowTrigger.VALIDATION_FAILED,
+                WorkflowState.BRIEFING,
                 guard=lambda ctx: ctx.retry_count < ctx.max_retries,
             ),
             Transition(
-                WorkflowState.VALIDATION, WorkflowTrigger.VALIDATION_FAILED, WorkflowState.FAILED,
+                WorkflowState.VALIDATION,
+                WorkflowTrigger.VALIDATION_FAILED,
+                WorkflowState.FAILED,
                 guard=lambda ctx: ctx.retry_count >= ctx.max_retries,
             ),
-            Transition(WorkflowState.WRITING, WorkflowTrigger.WRITING_DONE, WorkflowState.QUALITY_ANALYSIS),
             Transition(
-                WorkflowState.QUALITY_ANALYSIS, WorkflowTrigger.QUALITY_PASSED, WorkflowState.COMPLETED,
+                WorkflowState.WRITING, WorkflowTrigger.WRITING_DONE, WorkflowState.QUALITY_ANALYSIS
             ),
             Transition(
-                WorkflowState.QUALITY_ANALYSIS, WorkflowTrigger.QUALITY_FAILED_WRITING, WorkflowState.WRITING,
+                WorkflowState.QUALITY_ANALYSIS,
+                WorkflowTrigger.QUALITY_PASSED,
+                WorkflowState.PENDING_APPROVAL,
+            ),
+            Transition(
+                WorkflowState.PENDING_APPROVAL,
+                WorkflowTrigger.HUMAN_APPROVED,
+                WorkflowState.COMPLETED,
+                guard=lambda ctx: ctx.human_approval_required and ctx.human_approved,
+            ),
+            Transition(
+                WorkflowState.PENDING_APPROVAL,
+                WorkflowTrigger.HUMAN_APPROVED,
+                WorkflowState.FAILED,
+                guard=lambda ctx: ctx.human_approval_required and not ctx.human_approved,
+            ),
+            Transition(
+                WorkflowState.QUALITY_ANALYSIS,
+                WorkflowTrigger.QUALITY_FAILED_WRITING,
+                WorkflowState.WRITING,
                 guard=lambda ctx: ctx.writing_retry_count < ctx.max_retries,
             ),
             Transition(
-                WorkflowState.QUALITY_ANALYSIS, WorkflowTrigger.QUALITY_FAILED_WRITING, WorkflowState.FAILED,
+                WorkflowState.QUALITY_ANALYSIS,
+                WorkflowTrigger.QUALITY_FAILED_WRITING,
+                WorkflowState.FAILED,
                 guard=lambda ctx: ctx.writing_retry_count >= ctx.max_retries,
             ),
             Transition(
-                WorkflowState.QUALITY_ANALYSIS, WorkflowTrigger.QUALITY_FAILED_ENRICHMENT, WorkflowState.ENRICHMENT,
+                WorkflowState.QUALITY_ANALYSIS,
+                WorkflowTrigger.QUALITY_FAILED_ENRICHMENT,
+                WorkflowState.ENRICHMENT,
                 guard=lambda ctx: ctx.enrichment_retry_count < ctx.max_retries,
             ),
             Transition(
-                WorkflowState.QUALITY_ANALYSIS, WorkflowTrigger.QUALITY_FAILED_ENRICHMENT, WorkflowState.FAILED,
+                WorkflowState.QUALITY_ANALYSIS,
+                WorkflowTrigger.QUALITY_FAILED_ENRICHMENT,
+                WorkflowState.FAILED,
                 guard=lambda ctx: ctx.enrichment_retry_count >= ctx.max_retries,
             ),
             *[
@@ -120,8 +158,7 @@ class StateMachine:
 
     def trigger(self, ctx: WorkflowContext, trigger: WorkflowTrigger) -> WorkflowState:
         candidates = [
-            t for t in self._transitions
-            if t.from_state == ctx.state and t.trigger == trigger
+            t for t in self._transitions if t.from_state == ctx.state and t.trigger == trigger
         ]
         if not candidates:
             raise ValueError(f"No transition from {ctx.state!r} via {trigger!r}")

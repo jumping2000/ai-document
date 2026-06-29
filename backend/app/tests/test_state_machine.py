@@ -15,8 +15,8 @@ from app.workflows.state_machine.machine import (
     WorkflowTrigger,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def ctx() -> WorkflowContext:
@@ -29,6 +29,7 @@ def sm() -> StateMachine:
 
 
 # ── Happy path ────────────────────────────────────────────────────────────────
+
 
 class TestStateMachineHappyPath:
     def test_full_happy_path(self, sm: StateMachine, ctx: WorkflowContext) -> None:
@@ -51,6 +52,11 @@ class TestStateMachineHappyPath:
         assert ctx.state == WorkflowState.QUALITY_ANALYSIS
 
         sm.trigger(ctx, WorkflowTrigger.QUALITY_PASSED)
+        assert ctx.state == WorkflowState.PENDING_APPROVAL
+
+        ctx.human_approval_required = True
+        ctx.human_approved = True
+        sm.trigger(ctx, WorkflowTrigger.HUMAN_APPROVED)
         assert ctx.state == WorkflowState.COMPLETED
 
     def test_terminal_state_is_completed(self, ctx: WorkflowContext) -> None:
@@ -59,6 +65,7 @@ class TestStateMachineHappyPath:
 
 
 # ── Retry loops ───────────────────────────────────────────────────────────────
+
 
 class TestRetryLoops:
     def test_validation_retry_increments_counter(
@@ -118,6 +125,7 @@ class TestRetryLoops:
 
 # ── Fatal error ───────────────────────────────────────────────────────────────
 
+
 class TestFatalError:
     def test_fatal_error_from_briefing(self, sm: StateMachine, ctx: WorkflowContext) -> None:
         sm.trigger(ctx, WorkflowTrigger.START)
@@ -134,6 +142,7 @@ class TestFatalError:
 
 
 # ── Invalid transitions ───────────────────────────────────────────────────────
+
 
 class TestInvalidTransitions:
     def test_invalid_trigger_raises(self, sm: StateMachine, ctx: WorkflowContext) -> None:
@@ -152,6 +161,7 @@ class TestInvalidTransitions:
 
 # ── Context defaults ──────────────────────────────────────────────────────────
 
+
 class TestWorkflowContext:
     def test_default_state(self, ctx: WorkflowContext) -> None:
         assert ctx.state == WorkflowState.INIT
@@ -161,3 +171,48 @@ class TestWorkflowContext:
 
     def test_max_retries_default(self, ctx: WorkflowContext) -> None:
         assert ctx.max_retries == 3
+
+
+# ── Pending Approval ──────────────────────────────────────────────────────────
+
+
+def _make_ctx(state: WorkflowState = WorkflowState.QUALITY_ANALYSIS) -> WorkflowContext:
+    return WorkflowContext(
+        workflow_id="test-001",
+        document_type="capitolato",
+        state=state,
+        quality_score=0.92,
+    )
+
+
+class TestPendingApproval:
+    def test_quality_passed_goes_to_pending_approval(self, sm: StateMachine) -> None:
+        ctx = _make_ctx(WorkflowState.QUALITY_ANALYSIS)
+        new_state = sm.trigger(ctx, WorkflowTrigger.QUALITY_PASSED)
+        assert new_state == WorkflowState.PENDING_APPROVAL
+
+    def test_human_approved_goes_to_completed(self, sm: StateMachine) -> None:
+        ctx = _make_ctx(WorkflowState.PENDING_APPROVAL)
+        ctx.human_approval_required = True
+        ctx.human_approved = True
+        new_state = sm.trigger(ctx, WorkflowTrigger.HUMAN_APPROVED)
+        assert new_state == WorkflowState.COMPLETED
+
+    def test_human_rejected_goes_to_failed(self, sm: StateMachine) -> None:
+        ctx = _make_ctx(WorkflowState.PENDING_APPROVAL)
+        ctx.human_approval_required = True
+        ctx.human_approved = False
+        new_state = sm.trigger(ctx, WorkflowTrigger.HUMAN_APPROVED)
+        assert new_state == WorkflowState.FAILED
+
+    def test_human_approved_without_flag_raises(self, sm: StateMachine) -> None:
+        ctx = _make_ctx(WorkflowState.PENDING_APPROVAL)
+        ctx.human_approval_required = False
+        with pytest.raises(ValueError, match="All guards failed"):
+            sm.trigger(ctx, WorkflowTrigger.HUMAN_APPROVED)
+
+    def test_cannot_skip_pending_approval_to_completed(self, sm: StateMachine) -> None:
+        ctx = _make_ctx(WorkflowState.QUALITY_ANALYSIS)
+        new_state = sm.trigger(ctx, WorkflowTrigger.QUALITY_PASSED)
+        assert new_state != WorkflowState.COMPLETED
+        assert new_state == WorkflowState.PENDING_APPROVAL
