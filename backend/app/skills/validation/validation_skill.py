@@ -33,7 +33,7 @@ _FALLBACK_REQUIRED: dict[str, list[dict[str, Any]]] = {
         {"path": "scope.objectives", "label": "Obiettivi progetto"},
         {"path": "functional_requirements", "label": "Requisiti funzionali", "min_items": 3},
         {"path": "technical_requirements", "label": "Requisiti tecnici", "min_items": 1},
-        {"path": "sla.K1", "label": "Qualità del Codice"},
+        {"path": "sla.metrics", "label": "Indicatori SLA", "min_items": 1},
         {"path": "security_compliance.standards", "label": "Standard sicurezza"},
         {"path": "timeline.go_live", "label": "Data go-live"},
     ],
@@ -42,6 +42,7 @@ _FALLBACK_REQUIRED: dict[str, list[dict[str, Any]]] = {
         {"path": "scope.objectives", "label": "Obiettivi"},
         {"path": "functional_requirements", "label": "Requisiti funzionali", "min_items": 3},
         {"path": "technical_requirements", "label": "Requisiti tecnici", "min_items": 1},
+        {"path": "sla.metrics", "label": "Indicatori SLA", "min_items": 1},
         {"path": "security_compliance", "label": "Requisiti sicurezza"},
     ],
     "documento": [
@@ -163,41 +164,51 @@ def _parse_duration_hours(value: str) -> float | None:
     return hours
 
 
-def validate_sla_consistency(
-    sla: dict[str, Any],
+def validate_sla_metrics(
+    sla: dict[str, Any] | None,
     document_type: str = "capitolato",
 ) -> ValidationResult:
     """
-    Validate that SLA section contains the expected KPI/KPO fields.
+    Validate free-form SLA metrics list.
 
-    Checks PRESENCE only — does not enforce value constraints (RTO>RPO, ranges).
-    Expected fields loaded from template.yaml sla_rules section.
+    For 'documento' type, SLA is never required.
+    For 'capitolato' and 'requisiti', at least one metric with metric+target is required.
     """
-    from app.core.template_config import load_template_config
+    if document_type == "documento":
+        return ValidationResult(valid=True)
 
-    config = load_template_config(document_type)
-    rules = config.get("sla_rules", {})
+    if not sla or not isinstance(sla, dict):
+        return ValidationResult(
+            valid=False,
+            issues=["SLA: nessuna metrica definita. Inserire almeno una metrica SLA."],
+            missing_fields=["sla.metrics"],
+        )
 
-    result = ValidationResult(valid=True)
+    metrics = sla.get("metrics", [])
+    if not metrics or not isinstance(metrics, list) or len(metrics) == 0:
+        return ValidationResult(
+            valid=False,
+            issues=["SLA: inserire almeno una metrica (es. Disponibilità, RTO, RPO)."],
+            missing_fields=["sla.metrics"],
+        )
 
-    # Check expected KPI fields are present
-    expected_kpis = rules.get("expected_kpis", [])
-    for kpi in expected_kpis:
-        kpi_name = kpi if isinstance(kpi, str) else kpi.get("field", "")
-        label = kpi if isinstance(kpi, str) else kpi.get("label", kpi_name)
-        value = sla.get(kpi_name)
-        if value is None or value == "":
-            result.missing_fields.append(label)
-            result.issues.append(f"KPI mancante nella sezione SLA: {label}")
+    issues = []
+    for i, m in enumerate(metrics):
+        if not isinstance(m, dict):
+            issues.append(f"SLA metrics[{i}]: deve essere un oggetto con 'metric' e 'target'.")
+            continue
+        if not m.get("metric"):
+            issues.append(f"SLA metrics[{i}]: campo 'metric' mancante.")
+        if not m.get("target"):
+            issues.append(
+                f"SLA metrics[{i}]: campo 'target' mancante per '{m.get('metric', '?')}'."
+            )
 
-    # Check expected KPO fields (warnings only, not blocking)
-    expected_kpos = rules.get("expected_kpos", [])
-    for kpo in expected_kpos:
-        kpo_name = kpo if isinstance(kpo, str) else kpo.get("field", "")
-        label = kpo if isinstance(kpo, str) else kpo.get("label", kpo_name)
-        value = sla.get(kpo_name)
-        if value is None or value == "":
-            result.warnings.append(f"KPO opzionale mancante nella sezione SLA: {label}")
+    return ValidationResult(
+        valid=len(issues) == 0,
+        issues=issues,
+        missing_fields=[] if len(issues) == 0 else ["sla.metrics"],
+    )
 
     # If SLA section is completely empty, that's a warning (some docs may not need SLA)
     if not sla:

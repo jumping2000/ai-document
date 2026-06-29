@@ -153,21 +153,33 @@ async def approve_workflow(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Human-in-the-loop approval gate."""
+    action = "approved" if req.approved else "rejected"
+    log.info("workflow_approval", workflow_id=workflow_id, action=action, comment=req.comment)
+
+    # Path 1: runner in memoria — sveglia l'Event
+    from app.workflows.execution.runner import _approval_events
+
+    approval = _approval_events.get(workflow_id)
+    if approval is not None:
+        approval.approved = req.approved
+        approval.event.set()
+        return {"workflow_id": workflow_id, "action": action}
+
+    # Path 2: runner non in memoria (es. restart server) — transizione diretta DB
     try:
-        wf = await db.get(Workflow, uuid.UUID(workflow_id))
-    except Exception:
-        wf = None
+        wf_id = uuid.UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID")
+
+    wf = await db.get(Workflow, wf_id)
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    if wf.state not in ("QUALITY_ANALYSIS", "COMPLETED"):
+    if wf.state != "PENDING_APPROVAL":
         raise HTTPException(
             status_code=400,
             detail=f"Workflow in state {wf.state} does not require approval",
         )
-
-    action = "approved" if req.approved else "rejected"
-    log.info("workflow_approval", workflow_id=workflow_id, action=action, comment=req.comment)
 
     wf.state = "COMPLETED" if req.approved else "FAILED"
     wf.metadata_ = {

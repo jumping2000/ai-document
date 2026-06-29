@@ -58,18 +58,19 @@ class RetrievalSkill:
         self,
         requirements: dict[str, Any],
         document_type: str = "capitolato",
+        search_terms: list[str] | None = None,
         max_docs: int | None = None,
         kb_id: str | None = None,
     ) -> RetrievedContext:
         """
         Build KB context from requirements.
 
-        Input:  requirements dict + document type
+        Input:  requirements dict + document type + optional search_terms
         Output: RetrievedContext with formatted context_text
         """
         if max_docs is None:
             max_docs = app_cfg("retrieval.max_docs", 8)
-        queries = self._build_queries(requirements, document_type)
+        queries = self._build_queries(requirements, document_type, search_terms)
         log.info("retrieval_queries", count=len(queries), doc_type=document_type)
 
         # Run queries with limited concurrency (NanoRAG processes LLM calls sequentially)
@@ -120,27 +121,19 @@ class RetrievalSkill:
         self,
         requirements: dict[str, Any],
         document_type: str,
+        search_terms: list[str] | None = None,
     ) -> list[str]:
-        """Generate targeted search queries from template.yaml retrieval_queries.
-
-        Loads query templates from the template config, resolves {placeholder}
-        tokens from the requirements dict using dot-notation, and returns only
-        the queries where ALL placeholders resolved to non-empty values.
-        """
+        """Generate targeted search queries from template.yaml retrieval_queries
+        and dynamic search_terms extracted from user input."""
         config = load_template_config(document_type)
         templates = config.get("retrieval_queries", [])
-        if not templates:
-            log.warning("no_retrieval_queries_in_template", doc_type=document_type)
-            return []
-
         queries: list[str] = []
         placeholder_re = re.compile(r"\{([^}]+)\}")
 
+        # Template-based queries
         for tpl in templates:
-            # Find all placeholders in this template
             placeholders = placeholder_re.findall(tpl)
             if not placeholders:
-                # No placeholders — use template as-is
                 queries.append(tpl)
                 continue
 
@@ -151,14 +144,12 @@ class RetrievalSkill:
                 if value is None or value == "":
                     skip = True
                     break
-                # For lists, take the first element as readable string
                 if isinstance(value, list):
                     if not value:
                         skip = True
                         break
                     first = value[0]
                     if isinstance(first, dict):
-                        # Try common descriptive fields
                         value = (
                             first.get("description")
                             or first.get("title")
@@ -172,6 +163,13 @@ class RetrievalSkill:
 
             if not skip:
                 queries.append(resolved)
+
+        # Dynamic search_terms queries
+        if search_terms:
+            for term in search_terms:
+                term = term.strip()
+                if term and term not in queries:
+                    queries.append(term)
 
         return list(dict.fromkeys(queries))  # preserve order, remove dups
 

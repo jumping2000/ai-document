@@ -59,6 +59,7 @@ class ProcurementAgent:
         self,
         requirements: dict[str, Any],
         document_type: str,
+        search_terms: list[str] | None = None,
         mcp_url: str | None = None,
         mcp_api_key: str | None = None,
         mcp_tools: list[dict[str, Any]] | None = None,
@@ -86,7 +87,9 @@ class ProcurementAgent:
 
         if mcp_url:
             self._retrieval = RetrievalSkill(mcp_url=mcp_url, mcp_api_key=mcp_api_key)
-            ctx = await self._retrieval.build_context(requirements, document_type, kb_id=mcp_kb_id)
+            ctx = await self._retrieval.build_context(
+                requirements, document_type, search_terms=search_terms, kb_id=mcp_kb_id
+            )
             kb_context = ctx.context_text
             sources = [s.get("title", str(s)) for s in ctx.sources]
 

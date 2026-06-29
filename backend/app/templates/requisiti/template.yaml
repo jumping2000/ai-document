@@ -34,37 +34,17 @@ required_fields:
   - path: "technical_requirements"
     label: "Requisiti Tecnici"
     min_items: 1
-  - path: "sla.K1"
-    label: "Qualità del Codice"
-  - path: "sla.K2"
-    label: "Tasso Difettosità Esercizio"
-  - path: "sla.K3"
-    label: "Ritardo Consegna Deliverable"
+  - path: "sla.metrics"
+    label: "Indicatori SLA"
+    min_items: 1
   - path: "security_compliance"
     label: "Requisiti Sicurezza"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SLA RULES — Definisce quali KPI/KPO devono essere presenti nella sezione SLA
+# SLA — Le metriche SLA sono ora a schema libero.
+# L'LLM estrae dal testo utente qualsiasi metrica SLA menzionata.
+# Per capitolato/requisiti è obbligatoria almeno una metrica.
 # ──────────────────────────────────────────────────────────────────────────────
-# expected_kpis: campi OBBLIGatori — la loro assenza genera un errore di validazione
-# expected_kpos: campi opzionali — la loro assenza genera un warning
-# Il sistema NON impone vincoli sui valori (range, RTO>RPO, etc.)
-# ──────────────────────────────────────────────────────────────────────────────
-sla_rules:
-  expected_kpis:
-    - field: "K1"
-      label: "Qualità del Codice"
-    - field: "K2"
-      label: "Tasso Difettosità Esercizio"
-    - field: "K3"
-      label: "Ritardo Consegna Deliverable"
-  expected_kpos:
-    - field: "K1"
-      label: "99%"
-    - field: "K2"
-      label: "1%"
-    - field: "K3"
-      label: "0"
 
 quality_checks:
   - id: functional_requirements_addressed

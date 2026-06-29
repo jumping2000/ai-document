@@ -4,7 +4,7 @@ Input  : document_type, existing partial requirements
 Output : RequirementResult(requirements, summary, missing_fields, confidence)
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
@@ -45,9 +45,10 @@ CANONICAL_SCHEMA = {
         }
     ],
     "sla": {
-        "K1": "99%",
-        "K2": "1%",
-        "K3": "0",
+        "metrics": [
+            {"metric": "Nome metrica", "target": "Valore target", "note": "Note (opzionale)"}
+        ],
+        "penalties": "Eventuali penali contrattuali descritte dall'utente",
     },
     "security_compliance": {
         "standards": ["ISO 27001", "GDPR"],
@@ -84,9 +85,6 @@ CANONICAL_CRITICAL_FIELDS = [
     "scope.objectives",
     "functional_requirements",
     "technical_requirements",
-    "sla.K1",
-    "sla.K2",
-    "sla.K3",
     "security_compliance.standards",
     "timeline.go_live",
 ]
@@ -158,10 +156,21 @@ def normalize_to_canonical(raw: dict[str, Any]) -> dict[str, Any]:
                 {"role": s, "responsibilities": ""} for s in raw["stakeholders"]
             ]
 
-    # kpi as list → sla.custom_kpis
+    # kpi as list → sla.metrics (each item becomes a metric object)
     if raw.get("kpi") and isinstance(raw["kpi"], list):
-        if not canon["sla"].get("custom_kpis"):
-            canon["sla"]["custom_kpis"] = raw["kpi"]
+        existing_metrics = canon["sla"].get("metrics", [])
+        for item in raw["kpi"]:
+            if isinstance(item, dict) and item.get("metric"):
+                existing_metrics.append(
+                    {
+                        "metric": item["metric"],
+                        "target": item.get("target", ""),
+                        "note": item.get("note", ""),
+                    }
+                )
+            elif isinstance(item, str):
+                existing_metrics.append({"metric": item, "target": "", "note": ""})
+        canon["sla"]["metrics"] = existing_metrics
 
     # compliance list → security_compliance.standards
     if raw.get("compliance") and isinstance(raw["compliance"], list):
@@ -188,6 +197,7 @@ class RequirementResult:
     summary: str
     missing_fields: list[str]
     confidence: float
+    search_terms: list[str] = field(default_factory=list)
 
 
 class RequirementError(Exception):
@@ -256,6 +266,10 @@ class RequirementAgent:
             f"Existing context: {existing_json}\n\n"
             "Return ONLY a JSON object conforming to this schema:\n"
             f"{schema_json}\n\n"
+            "Also extract 'search_terms': a list of specific technologies, products, "
+            "standards, frameworks, and systems mentioned in the user input. "
+            "Be specific: proper nouns, not generic concepts. Maximum 10 terms. "
+            "Examples: 'sessionmanager', 'OAuth2', 'PostgreSQL', 'Kubernetes', 'ISO 27001'.\n\n"
             "Rules:\n"
             "- Use null for unknown string fields, [] for unknown lists.\n"
             f"- functional_requirements: at least {self._min_fr} items.\n"
@@ -328,9 +342,11 @@ class RequirementAgent:
             missing=missing,
             confidence=confidence,
         )
+        search_terms: list[str] = raw.get("search_terms", []) if isinstance(raw, dict) else []
         return RequirementResult(
             requirements=canon,
             summary=summary_resp.content.strip(),
             missing_fields=missing,
             confidence=confidence,
+            search_terms=search_terms,
         )

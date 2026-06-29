@@ -30,7 +30,6 @@ from app.skills.validation.validation_skill import (
     score_requirement_richness,
     validate_document_sections,
     validate_requirements_completeness,
-    validate_sla_consistency,
 )
 from app.workflows.state_machine.machine import (
     StateMachine,
@@ -101,6 +100,7 @@ class WorkflowRunner:
                 ),
             )
             ctx.requirements = req_output.requirements
+            search_terms = req_output.search_terms
             old = ctx.state
             self.sm.trigger(ctx, WorkflowTrigger.REQUIREMENTS_COLLECTED)
             await self._persist_state(
@@ -140,6 +140,7 @@ class WorkflowRunner:
                 lambda: self.procurement_agent.enrich(
                     requirements=ctx.requirements,
                     document_type=document_type,
+                    search_terms=search_terms,
                     mcp_url=mcp_url,
                     mcp_api_key=mcp_api_key,
                     mcp_tools=mcp_tools,
@@ -160,15 +161,12 @@ class WorkflowRunner:
                     ctx.enriched_requirements, document_type
                 )
 
-                # NEW: SLA consistency check (informational — SLA issues are
-                # appended to validation.issues but don't set validation.valid
-                # to False on their own; only completeness checks block the flow)
+                # NEW: SLA metrics check (type-aware — skips for 'documento')
                 sla = ctx.enriched_requirements.get("sla", {})
-                if sla:
-                    sla_val = validate_sla_consistency(sla, document_type)
-                    if not sla_val.valid:
-                        validation.issues.extend(sla_val.issues)
-                    validation.warnings.extend(sla_val.warnings)
+                sla_val = validate_sla_metrics(sla, document_type)
+                if not sla_val.valid:
+                    validation.issues.extend(sla_val.issues)
+                validation.warnings.extend(sla_val.warnings)
 
                 # NEW: Richness score (informational emit)
                 richness = score_requirement_richness(ctx.enriched_requirements)
@@ -232,6 +230,7 @@ class WorkflowRunner:
                             ),
                         )
                         ctx.requirements = req_output.requirements
+                        search_terms = req_output.search_terms
                         old = ctx.state
                         self.sm.trigger(ctx, WorkflowTrigger.REQUIREMENTS_COLLECTED)
                         await self._persist_state(
@@ -247,6 +246,7 @@ class WorkflowRunner:
                             lambda: self.procurement_agent.enrich(
                                 requirements=ctx.requirements,
                                 document_type=document_type,
+                                search_terms=search_terms,
                                 mcp_url=mcp_url,
                                 mcp_api_key=mcp_api_key,
                                 mcp_tools=mcp_tools,
@@ -391,6 +391,7 @@ class WorkflowRunner:
                                 lambda: self.procurement_agent.enrich(
                                     requirements=ctx.requirements,
                                     document_type=document_type,
+                                    search_terms=search_terms,
                                     mcp_url=mcp_url,
                                     mcp_api_key=mcp_api_key,
                                     mcp_tools=mcp_tools,

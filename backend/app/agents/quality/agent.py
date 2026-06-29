@@ -20,7 +20,7 @@ log = structlog.get_logger(__name__)
 
 QUALITY_CHECKLIST = [
     "All functional requirements are addressed in the document",
-    "SLA targets are explicitly stated with numeric values",
+    "SLA metrics are explicitly stated with measurable targets",
     "Security requirements reference at least one standard (ISO, OWASP, GDPR)",
     "Document has a coherent structure with numbered sections",
     "No contradictions between sections",
