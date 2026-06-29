@@ -21,7 +21,7 @@ import type { AgentName, DocumentType, WorkflowStateEnum } from '../types';
 
 const STATES: WorkflowStateEnum[] = [
   'INIT', 'BRIEFING', 'ENRICHMENT', 'VALIDATION',
-  'WRITING', 'QUALITY_ANALYSIS', 'COMPLETED',
+  'WRITING', 'QUALITY_ANALYSIS', 'PENDING_APPROVAL', 'COMPLETED',
 ];
 
 const AGENT_META: Record<AgentName, { labelKey: string; icon: React.ElementType; color: string }> = {
@@ -43,6 +43,7 @@ function stateIndex(s: string): number {
 function stateColor(s: string): string {
   if (s === 'COMPLETED') return '#34d399';
   if (s === 'FAILED') return '#f87171';
+  if (s === 'PENDING_APPROVAL') return '#f59e0b';
   return '#6366f1';
 }
 
@@ -183,6 +184,115 @@ function QualityGauge({ score, passed }: { score: number; passed: boolean }) {
         {passed ? t('quality.approved') : t('quality.revision')}
       </span>
     </div>
+  );
+}
+
+// ── Approval Panel ─────────────────────────────────────────────────────────────
+
+function ApprovalPanel({
+  workflowId,
+  qualityScore,
+  issues,
+  suggestions,
+}: {
+  workflowId: string;
+  qualityScore: number;
+  issues: string[];
+  suggestions: string[];
+}) {
+  const { t } = useTranslation();
+  const [comment, setComment] = useState('');
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function handleApprove(approved: boolean) {
+    setSending(true);
+    try {
+      const res = await fetch(`${API_BASE}/workflow/${workflowId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved, comment }),
+      });
+      if (res.ok) {
+        setDone(true);
+      }
+    } catch (err) {
+      console.error('Approval failed:', err);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-6 text-center">
+        <p className="text-sm text-amber-600 dark:text-amber-400 font-semibold">
+          {t('approval.sending')}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-6 space-y-4"
+    >
+      <div className="flex items-center gap-2">
+        <Clock size={18} className="text-amber-500" />
+        <h3 className="text-sm font-bold text-amber-600 dark:text-amber-400">
+          {t('approval.title')}
+        </h3>
+      </div>
+
+      <p className="text-xs text-zinc-600 dark:text-zinc-400">
+        {t('approval.waiting')}
+      </p>
+
+      <div className="flex gap-2 text-xs text-zinc-500">
+        <span>Score: <strong>{Math.round(qualityScore * 100)}%</strong></span>
+        <span>|</span>
+        <span>Issues: <strong>{issues.length}</strong></span>
+        <span>|</span>
+        <span>Suggestions: <strong>{suggestions.length}</strong></span>
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">
+          {t('approval.comment')}
+        </label>
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          rows={2}
+          className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2
+                     text-xs text-zinc-900 dark:text-white placeholder-zinc-400 resize-none
+                     focus:outline-none focus:border-amber-500 transition-colors"
+        />
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => handleApprove(true)}
+          disabled={sending}
+          className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50
+                     text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+        >
+          <CheckCircle2 size={14} />
+          {t('approval.approve')}
+        </button>
+        <button
+          onClick={() => handleApprove(false)}
+          disabled={sending}
+          className="flex-1 py-2.5 bg-red-500 hover:bg-red-400 disabled:opacity-50
+                     text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+        >
+          <XCircle size={14} />
+          {t('approval.reject')}
+        </button>
+      </div>
+    </motion.div>
   );
 }
 
@@ -665,6 +775,16 @@ export default function WorkflowMonitorPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Approval Panel — mostrato in PENDING_APPROVAL */}
+              {currentState === 'PENDING_APPROVAL' && activeWorkflowId && qualityReport && (
+                <ApprovalPanel
+                  workflowId={activeWorkflowId}
+                  qualityScore={qualityReport.score}
+                  issues={qualityReport.issues?.map((i: {description: string}) => i.description) ?? []}
+                  suggestions={qualityReport.suggestions ?? []}
+                />
+              )}
 
               {/* Actions */}
               {(isCompleted || isFailed) && (

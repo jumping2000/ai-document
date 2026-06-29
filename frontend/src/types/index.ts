@@ -9,6 +9,7 @@ export type WorkflowStateEnum =
   | 'VALIDATION'
   | 'WRITING'
   | 'QUALITY_ANALYSIS'
+  | 'PENDING_APPROVAL'
   | 'COMPLETED'
   | 'FAILED';
 
@@ -39,6 +40,7 @@ export type WorkflowEventType =
   | 'quality_report'
   | 'validation_result'
   | 'validation_failed'
+  | 'pending_approval'
   | 'completed'
   | 'failed'
   | 'heartbeat';

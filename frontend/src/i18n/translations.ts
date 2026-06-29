@@ -40,6 +40,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'state.WRITING': 'Generazione Doc.',
     'state.QUALITY_ANALYSIS': 'Quality Review',
     'state.COMPLETED': 'Completato',
+    'state.PENDING_APPROVAL': 'In Attesa Approvazione',
     'state.FAILED': 'Errore',
 
     // Monitor
@@ -66,6 +67,16 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Quality
     'quality.approved': '✓ APPROVATO',
     'quality.revision': '✗ REVISIONE',
+
+    // Approval
+    'approval.title': '🔔 In attesa di approvazione',
+    'approval.waiting': 'Il documento ha superato la quality review. Rivedi i risultati e approva o respingi.',
+    'approval.approve': '✓ APPROVA',
+    'approval.reject': '✗ RESPINGI',
+    'approval.comment': 'Commento (opzionale)',
+    'approval.sending': 'Invio in corso…',
+    'approval.success': 'Documento approvato',
+    'approval.rejected': 'Documento respinto',
 
     // Document
     'document.title': 'Documento Generato',
@@ -216,6 +227,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'state.WRITING': 'Document Generation',
     'state.QUALITY_ANALYSIS': 'Quality Review',
     'state.COMPLETED': 'Completed',
+    'state.PENDING_APPROVAL': 'Pending Approval',
     'state.FAILED': 'Error',
 
     // Monitor
@@ -242,6 +254,16 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Quality
     'quality.approved': '✓ APPROVED',
     'quality.revision': '✗ REVISION',
+
+    // Approval
+    'approval.title': '🔔 Awaiting Approval',
+    'approval.waiting': 'The document passed quality review. Review the results and approve or reject.',
+    'approval.approve': '✓ APPROVE',
+    'approval.reject': '✗ REJECT',
+    'approval.comment': 'Comment (optional)',
+    'approval.sending': 'Sending…',
+    'approval.success': 'Document approved',
+    'approval.rejected': 'Document rejected',
 
     // Document
     'document.title': 'Generated Document',

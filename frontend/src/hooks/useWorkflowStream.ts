@@ -47,6 +47,9 @@ export function useWorkflowStream(workflowId: string | null) {
         case 'quality_report':
           setQualityReport(msg.data as any);
           break;
+        case 'pending_approval':
+          // Approval gate event — frontend shows ApprovalPanel based on state
+          break;
         case 'validation_result':
         case 'validation_failed':
           setValidationResult({
