@@ -97,8 +97,9 @@ function StateRail({ current }: { current: string }) {
   );
 }
 
-function AgentCard({ name, status, duration_ms }: {
+function AgentCard({ name, status, duration_ms, tokens }: {
   name: AgentName; status: string; duration_ms?: number;
+  tokens?: { input: number; output: number; total: number };
 }) {
   const { t } = useTranslation();
   const meta = AGENT_META[name];
@@ -128,7 +129,7 @@ function AgentCard({ name, status, duration_ms }: {
           <div className={`text-xs font-semibold ${isRunning ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 dark:text-zinc-400'}`}>
             {t(meta.labelKey)}
           </div>
-          <div className="text-[10px] text-zinc-500 dark:text-zinc-600 mt-0.5">
+          <div className="text-[10px] text-zinc-500 dark:text-zinc-600 mt-0.5 space-y-0.5">
             {isRunning && (
               <span style={{ color: meta.color }} className="flex items-center gap-1">
                 <motion.span
@@ -138,7 +139,14 @@ function AgentCard({ name, status, duration_ms }: {
                 {t('agent.running')}
               </span>
             )}
-            {isDone && duration_ms && `${t('agent.completed')} ${(duration_ms / 1000).toFixed(1)}s`}
+            {isDone && duration_ms && (
+              <span>{t('agent.completed')} {(duration_ms / 1000).toFixed(1)}s</span>
+            )}
+            {isDone && tokens && tokens.total > 0 && (
+              <span className="block text-[9px] text-zinc-400">
+                {t('agent.tokens')}: {tokens.input.toLocaleString()}↑ {tokens.output.toLocaleString()}↓
+              </span>
+            )}
             {status === 'idle' && t('agent.waiting')}
             {status === 'error' && <span className="text-red-400">{t('agent.error')}</span>}
           </div>
@@ -200,7 +208,7 @@ function ApprovalPanel({
   suggestions: string[];
 }) {
   const { t } = useTranslation();
-  const { updateWorkflowState } = useWorkflowStore();
+  const { updateWorkflowState, setDocumentContent } = useWorkflowStore();
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const [showIssues, setShowIsses] = useState(issues.length > 0);
@@ -223,6 +231,7 @@ function ApprovalPanel({
             if (poll.ok) {
               const data = await poll.json();
               updateWorkflowState(data.state);
+              if (data.document_content) setDocumentContent(data.document_content);
               if (data.state === 'COMPLETED' || data.state === 'FAILED') break;
             }
           } catch { /* retry */ }
@@ -645,6 +654,7 @@ export default function WorkflowMonitorPage() {
                           name={name}
                           status={agentStatuses[name]?.status ?? 'idle'}
                           duration_ms={agentStatuses[name]?.duration_ms}
+                          tokens={agentStatuses[name]?.tokens}
                         />
                       ))}
                     </div>
@@ -974,7 +984,7 @@ export default function WorkflowMonitorPage() {
                                   prose-a:text-indigo-600 dark:prose-a:text-indigo-400
                                   prose-code:text-zinc-800 dark:prose-code:text-zinc-200
                                   prose-table:text-zinc-800 dark:prose-table:text-zinc-200">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown key={documentContent.length} remarkPlugins={[remarkGfm]}>
                       {documentContent}
                     </ReactMarkdown>
                   </div>

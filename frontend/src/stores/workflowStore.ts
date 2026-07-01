@@ -27,6 +27,7 @@ interface WorkflowStore {
   updateWorkflowState: (state: WorkflowStateEnum) => void;
   setAgentRunning: (agent: AgentName) => void;
   setAgentDone: (agent: AgentName, duration_ms: number) => void;
+  setAgentTokens: (agent: AgentName, tokens: { input: number; output: number; total: number }) => void;
   setQualityReport: (report: QualityReport) => void;
   setValidationResult: (result: ValidationResult) => void;
   setDocumentContent: (content: string) => void;
@@ -72,7 +73,15 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
     set((s) => ({
       agentStatuses: {
         ...s.agentStatuses,
-        [agent]: { name: agent, status: 'done', duration_ms },
+        [agent]: { ...s.agentStatuses[agent], name: agent, status: 'done', duration_ms },
+      },
+    })),
+
+  setAgentTokens: (agent, tokens) =>
+    set((s) => ({
+      agentStatuses: {
+        ...s.agentStatuses,
+        [agent]: { ...s.agentStatuses[agent], tokens },
       },
     })),
 

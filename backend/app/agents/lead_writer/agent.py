@@ -4,7 +4,7 @@ Input  : enriched_requirements, document_type, quality_issues (for revisions)
 Output : WriterResult(markdown, sections)
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.core.agent_config import load_agent_config
 from app.core.config import settings
-from app.core.llm import get_model_adapter
+from app.core.llm import extract_metrics, get_model_adapter
 from app.skills.export.export_skill import ExportSkill
 
 log = structlog.get_logger(__name__)
@@ -25,6 +25,7 @@ class WriterResult:
     sections: list[str]
     docx_path: str
     pdf_path: str
+    metrics: dict[str, int] = field(default_factory=dict)
 
 
 class LeadWriterAgent:
@@ -84,14 +85,17 @@ class LeadWriterAgent:
                 default_key, _default_template(document_type)
             )
 
-        prompt = (
-            f"Generate a complete '{document_type}' document.\n"
-            f"Template structure:\n{template_content}\n"
-            f"Requirements: {enriched_requirements}\n"
-            f"{revision_note}\n\n"
-            "Output the complete document in Markdown. Use ## for sections, ### for subsections."
+        import string as _string
+
+        cfg = load_agent_config("lead_writer")
+        prompt = _string.Template(cfg["prompt_template"]).substitute(
+            document_type=document_type,
+            template_content=str(template_content),
+            enriched_requirements=str(enriched_requirements),
+            revision_note=revision_note,
         )
         response = await self._agno.arun(prompt)
+        metrics = extract_metrics(response)
         markdown = response.content.strip()
 
         sections = [
@@ -110,7 +114,11 @@ class LeadWriterAgent:
 
         log.info("writer.write.done", sections=len(sections), docx=docx_path)
         return WriterResult(
-            markdown=markdown, sections=sections, docx_path=docx_path, pdf_path=pdf_path
+            markdown=markdown,
+            sections=sections,
+            docx_path=docx_path,
+            pdf_path=pdf_path,
+            metrics=metrics,
         )
 
 

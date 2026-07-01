@@ -16,7 +16,7 @@ Generates three document types via a multi-agent workflow:
 - 🔄 **Retry budgets**: Automatic retry loops for validation, writing quality, and enrichment phases with graceful degradation
 - 📡 **Real-time monitoring**: WebSocket event streaming for live UI updates during document generation
 - 🌐 **MCP integration**: Model Context Protocol support for external knowledge bases (RAG)
-- 📄 **Flexible templates**: YAML-driven template configuration with Jinja2 rendering, editable via API
+- 📄 **Flexible templates**: YAML-driven template and prompt configuration with Jinja2 rendering, editable via API. Agent LLM prompts live in `config/agents/*.yaml` — modifiable without Docker rebuild
 - 🎨 **Multi-provider LLM**: OpenAI, Anthropic, OpenRouter, or Ollama (local) — selectable via environment variable
 - 📤 **Multi-format export**: DOCX (python-docx) and PDF (ReportLab) export
 - 🌍 **i18n**: Italian and English UI with locale persistence

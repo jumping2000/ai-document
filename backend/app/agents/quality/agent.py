@@ -14,7 +14,7 @@ from app.core.agent_config import load_agent_config
 from app.core.app_config import app_cfg
 from app.core.config import settings
 from app.core.json_extract import extract_json
-from app.core.llm import get_model_adapter
+from app.core.llm import extract_metrics, get_model_adapter
 
 log = structlog.get_logger(__name__)
 
@@ -38,6 +38,7 @@ class QualityReport:
     suggestions: list[str] = field(default_factory=list)
     section_scores: dict[str, float] = field(default_factory=dict)
     needs_enrichment: bool = False
+    metrics: dict[str, int] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -81,16 +82,17 @@ class QualityAgent:
     ) -> QualityReport:
         log.info("quality.review.start", doc_type=document_type, content_len=len(content))
 
-        prompt = (
-            f"Review this '{document_type}' document against requirements.\n\n"
-            f"DOCUMENT:\n{content[: app_cfg('quality.max_content_length', 8000)]}\n\n"
-            f"ORIGINAL REQUIREMENTS: {requirements}\n\n"
-            f"CHECKLIST:\n" + "\n".join(f"- {c}" for c in self._checklist) + "\n\n"
-            'Return JSON: {"score": float(0-1), "passed": bool, '
-            '"issues": [str], "suggestions": [str], '
-            '"section_scores": {section: float}, "needs_enrichment": bool}'
+        import string as _string
+
+        cfg = load_agent_config("quality")
+        prompt = _string.Template(cfg["prompt_template"]).substitute(
+            document_type=document_type,
+            content=content[: app_cfg("quality.max_content_length", 8000)],
+            requirements=str(requirements),
+            checklist="\n".join(f"- {c}" for c in self._checklist),
         )
         response = await self._agno.arun(prompt)
+        metrics = extract_metrics(response)
 
         data = extract_json(response.content)
         if data:
@@ -129,6 +131,7 @@ class QualityAgent:
                     else:
                         report.passed = False
                 log.info("quality.review.done", score=report.score, passed=report.passed)
+                report.metrics = metrics
                 return report
             except (json.JSONDecodeError, KeyError) as exc:
                 log.error("quality.parse_error", error=str(exc))

@@ -12,7 +12,7 @@ from agno.agent import Agent
 
 from app.core.agent_config import load_agent_config
 from app.core.json_extract import extract_json
-from app.core.llm import get_model_adapter
+from app.core.llm import extract_metrics, get_model_adapter
 
 log = structlog.get_logger(__name__)
 
@@ -198,6 +198,7 @@ class RequirementResult:
     missing_fields: list[str]
     confidence: float
     search_terms: list[str] = field(default_factory=list)
+    metrics: dict[str, int] = field(default_factory=dict)
 
 
 class RequirementError(Exception):
@@ -207,6 +208,7 @@ class RequirementError(Exception):
 class RequirementAgent:
     def __init__(self) -> None:
         cfg = load_agent_config("requirement")
+        self._cfg = cfg
         self._schema = cfg.get("output_schema", CANONICAL_SCHEMA) if cfg else CANONICAL_SCHEMA
         self._critical_fields = (
             cfg.get("critical_fields", CANONICAL_CRITICAL_FIELDS)
@@ -240,6 +242,7 @@ class RequirementAgent:
     ) -> RequirementResult:
         import json as _json
         import re
+        import string
         import traceback
 
         log.info("requirement.collect.start", workflow_id=workflow_id)
@@ -256,41 +259,18 @@ class RequirementAgent:
                 + "\n"
             )
 
-        prompt = (
-            "Extract structured requirements from the user input below.\n"
-            f"Type: {document_type} | Title: {title}\n"
-            f"{clarifications_block}\n"
-            "=== INPUT ===\n"
-            f"{raw_text}\n"
-            "=== END INPUT ===\n\n"
-            "Return ONLY valid JSON (no fences, no prose). Structure:\n"
-            '{"project":{"title":"","organization":"","reference_code":null,"description":""},'
-            '"scope":{"objectives":[],"in_scope":[],"out_of_scope":[]},'
-            f'"functional_requirements":[{{"id":"FR-001","title":"","description":"","priority":"MUST"}}],'
-            f'"technical_requirements":[{{"id":"TR-001","category":"","description":"","constraint":""}}],'
-            '"sla":{"metrics":[{"metric":"","target":"","note":""}],"penalties":""},'
-            '"security_compliance":{"standards":[],"requirements":[],"data_classification":null},'
-            '"timeline":{"project_start":null,"go_live":null,"milestones":[]},'
-            '"integrations":[],"stakeholders":[],"constraints":[],'
-            '"regulatory_references":[],"evaluation_criteria":[],'
-            '"budget":{"indicative_value":"","currency":"EUR","notes":""},'
-            '"search_terms":[]}\n'
-            "RULES: 1)Parse ALL sections 2)SLA table rows→sla.metrics[{metric,target}] "
-            f"3)Min {self._min_fr} FR with FR-001..FR-00N IDs 4)Min {self._min_tr} TR with TR-001.. IDs "
-            "5)Unknown→null(string) or[](list) 6)search_terms: specific tech, max 10 7)NO fences, NO prose"
-        )
-
-        log.info(
-            "requirement.collect.prompt",
-            workflow_id=workflow_id,
-            prompt_len=len(prompt),
-            raw_text_len=len(raw_text),
-            prompt_head=prompt[:300],
-            prompt_tail=prompt[-300:],
+        prompt = string.Template(self._cfg["prompt_template"]).substitute(
+            document_type=document_type,
+            title=title,
+            clarifications_block=clarifications_block,
+            raw_text=raw_text,
+            min_fr=str(self._min_fr),
+            min_tr=str(self._min_tr),
         )
 
         try:
             response = await self._agno.arun(prompt)
+            metrics = extract_metrics(response)
         except (TypeError, ValueError) as exc:
             log.error(
                 "requirement.collect.llm_call_failed",
@@ -396,6 +376,12 @@ class RequirementAgent:
             summary_resp = await self._agno.arun(
                 f"Summarize in 3 sentences for a '{document_type}': {canon_json}"
             )
+            sm = extract_metrics(summary_resp)
+            metrics = {
+                "input": metrics.get("input", 0) + sm.get("input", 0),
+                "output": metrics.get("output", 0) + sm.get("output", 0),
+                "total": metrics.get("total", 0) + sm.get("total", 0),
+            }
         except (TypeError, ValueError) as exc:
             log.error(
                 "requirement.collect.summary_call_failed",
@@ -418,4 +404,5 @@ class RequirementAgent:
             missing_fields=missing,
             confidence=confidence,
             search_terms=search_terms,
+            metrics=metrics,
         )

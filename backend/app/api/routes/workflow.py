@@ -141,6 +141,7 @@ async def get_workflow(workflow_id: str, db: AsyncSession = Depends(get_db)) -> 
         "title": wf.title,
         "retry_count": wf.retry_count,
         "quality_score": None,
+        "document_content": (wf.metadata_ or {}).get("document_content", ""),
         "created_at": wf.created_at.isoformat() if wf.created_at else None,
         "updated_at": wf.updated_at.isoformat() if wf.updated_at else None,
     }

@@ -37,3 +37,12 @@ parameters:
     ## 4. Architettura
     ## 5. Sicurezza
     ## 6. Testing e Acceptance
+
+prompt_template: |
+  Generate a complete '$document_type' document.
+  Template structure:
+  $template_content
+  Requirements: $enriched_requirements
+  $revision_note
+
+  Output the complete document in Markdown. Use ## for sections, ### for subsections.

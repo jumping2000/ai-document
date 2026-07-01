@@ -28,3 +28,16 @@ quality_checklist:
     label: "Stakeholders and roles are defined"
   - id: measurable_acceptance_criteria
     label: "Acceptance criteria are measurable"
+
+prompt_template: |
+  Review this '$document_type' document against requirements.
+
+  DOCUMENT:
+  $content
+
+  ORIGINAL REQUIREMENTS: $requirements
+
+  CHECKLIST:
+  $checklist
+
+  Return JSON: {"score": float(0-1), "passed": bool, "issues": [str], "suggestions": [str], "section_scores": {section: float}, "needs_enrichment": bool}

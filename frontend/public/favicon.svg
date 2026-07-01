@@ -9,17 +9,17 @@
   <!-- Background rounded square -->
   <rect width="512" height="512" rx="96" fill="url(#bg)"/>
   
-  <!-- Robot/Agent head - white -->
-  <rect x="166" y="100" width="180" height="140" rx="28" fill="white"/>
+  <!-- Robot/Agent head -->
+  <rect x="96" y="155" width="320" height="250" rx="44" fill="white"/>
   <!-- Antenna -->
-  <line x1="256" y1="100" x2="256" y2="68" stroke="white" stroke-width="12" stroke-linecap="round"/>
-  <circle cx="256" cy="58" r="14" fill="white" opacity="0.8"/>
-  <!-- Eyes - purple -->
-  <circle cx="222" cy="164" r="18" fill="#7C3AED"/>
-  <circle cx="290" cy="164" r="18" fill="#7C3AED"/>
-  <!-- Mouth - purple -->
-  <rect x="226" y="198" width="60" height="10" rx="5" fill="#7C3AED"/>
-  
-  <!-- AI text - white -->
-  <text x="256" y="410" font-family="Arial, Helvetica, sans-serif" font-size="200" font-weight="900" fill="white" text-anchor="middle" letter-spacing="-8">AI</text>
+  <line x1="256" y1="155" x2="256" y2="90" stroke="white" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="256" cy="74" r="20" fill="white" opacity="0.8"/>
+  <!-- Eyes -->
+  <circle cx="196" cy="265" r="28" fill="#7C3AED"/>
+  <circle cx="316" cy="265" r="28" fill="#7C3AED"/>
+  <!-- Mouth -->
+  <rect x="206" y="323" width="100" height="16" rx="8" fill="#7C3AED"/>
+  <!-- Ears -->
+  <rect x="60" y="245" width="36" height="60" rx="12" fill="white"/>
+  <rect x="416" y="245" width="36" height="60" rx="12" fill="white"/>
 </svg>

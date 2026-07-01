@@ -61,6 +61,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'agent.quality': 'Quality Agent',
     'agent.running': 'In esecuzione…',
     'agent.completed': 'Completato in',
+    'agent.tokens': 'Token',
     'agent.waiting': 'In attesa',
     'agent.error': 'Errore',
 
@@ -250,6 +251,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'agent.quality': 'Quality Agent',
     'agent.running': 'Running…',
     'agent.completed': 'Completed in',
+    'agent.tokens': 'Tokens',
     'agent.waiting': 'Waiting',
     'agent.error': 'Error',
 

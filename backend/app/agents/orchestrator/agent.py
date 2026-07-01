@@ -157,10 +157,13 @@ class OrchestratorAgent:
 
     async def _run_validation(self) -> None:
         await self._emit("agent_start", {"agent": "orchestrator/validation"})
-        prompt = (
-            f"Validate enriched requirements for a '{self.ctx.document_type}' document. "
-            f'Return JSON: {{"complete": bool, "missing": [str], "reason": str}}\n\n'
-            f"Requirements: {self.ctx.enriched_requirements}"
+
+        import string
+
+        cfg = load_agent_config("orchestrator")
+        prompt = string.Template(cfg["prompt_template"]).substitute(
+            document_type=self.ctx.document_type,
+            enriched_requirements=str(self.ctx.enriched_requirements),
         )
         response = await self._agno.arun(prompt)
         validation = _parse_json_response(response.content)

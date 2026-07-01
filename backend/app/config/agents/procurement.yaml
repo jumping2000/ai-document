@@ -19,3 +19,12 @@ parameters:
       description: "Open Web Application Security Project guidelines and top 10"
     - name: "CIS Benchmarks"
       description: "Center for Internet Security configuration best practices"
+
+prompt_template: |
+  Enrich these requirements with standards, regulations, and best practices.
+  Document type: $document_type
+  Requirements: $requirements_json
+  Knowledge base context:
+  $kb_context
+
+  Return JSON: {"enriched": {...all fields...}, "standards_applied": [str], "sources": [str]}

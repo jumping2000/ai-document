@@ -105,13 +105,34 @@ Runtime tunables accessed via `app_cfg("section.key", default)`:
 ### Agent Configuration (`config/agents/{name}.yaml`)
 
 Each agent loads config via `@lru_cache` `load_agent_config(name)`:
+
 ```yaml
-system_prompt: ...
-parameters:
+system_prompt:                   # Agent personality (Agno instructions)
+  - "Instruction 1"
+  - "Instruction 2"
+parameters:                      # Agent-specific parameters
   max_retries: 3
-output_schema: {...}
-critical_fields: [...]
+output_schema: {...}             # Expected JSON output structure
+critical_fields: [...]           # Fields that must be present
+prompt_template: |               # Runtime LLM prompt (string.Template, $var syntax)
+  Extract structured requirements.
+  Type: $document_type | Title: $title
+  === INPUT ===
+  $raw_text
+  === END INPUT ===
+  Return ONLY valid JSON. Structure: {...}
+  RULES: ...
 ```
+
+**`prompt_template`** is the actual prompt sent to the LLM at runtime. It uses `string.Template` syntax (`$variable`), avoiding conflicts with JSON braces `{}`. Variables are provided by each agent's Python code. Modifying a prompt only requires editing the YAML and restarting the backend — no Docker rebuild needed.
+
+| YAML file | Template variables |
+|---|---|
+| `requirement.yaml` | `$document_type`, `$title`, `$clarifications_block`, `$raw_text`, `$min_fr`, `$min_tr` |
+| `procurement.yaml` | `$document_type`, `$requirements_json`, `$kb_context` |
+| `lead_writer.yaml` | `$document_type`, `$template_content`, `$enriched_requirements`, `$revision_note` |
+| `quality.yaml` | `$document_type`, `$content`, `$requirements`, `$checklist` |
+| `orchestrator.yaml` | `$document_type`, `$enriched_requirements` |
 
 ---
 

@@ -59,6 +59,7 @@ export interface AgentStatus {
   status: 'idle' | 'running' | 'done' | 'error';
   duration_ms?: number;
   started_at?: number;
+  tokens?: { input: number; output: number; total: number };
 }
 
 // ── Quality Report ────────────────────────────────────────────────────────────

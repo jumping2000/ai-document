@@ -5,7 +5,7 @@ Output : ProcurementResult(enriched, sources)
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
@@ -13,7 +13,7 @@ from agno.agent import Agent
 
 from app.core.agent_config import load_agent_config
 from app.core.json_extract import extract_json
-from app.core.llm import get_model_adapter
+from app.core.llm import extract_metrics, get_model_adapter
 from app.skills.retrieval.retrieval_skill import RetrievalSkill
 
 log = structlog.get_logger(__name__)
@@ -24,6 +24,7 @@ class ProcurementResult:
     enriched: dict[str, Any]
     sources: list[str]
     standards_applied: list[str]
+    metrics: dict[str, int] = field(default_factory=dict)
 
 
 class ProcurementAgent:
@@ -87,15 +88,16 @@ class ProcurementAgent:
             kb_context = ctx.context_text
             sources = [s.get("title", str(s)) for s in ctx.sources]
 
-        prompt = (
-            "Enrich these requirements with standards, regulations, and best practices.\n"
-            f"Document type: {document_type}\n"
-            f"Requirements: {json.dumps(requirements, ensure_ascii=False)}\n"
-            f"Knowledge base context:\n{kb_context}\n\n"
-            'Return JSON: {"enriched": {{...all fields...}}, '
-            '"standards_applied": [str], "sources": [str]}'
+        import string as _string
+
+        cfg = load_agent_config("procurement")
+        prompt = _string.Template(cfg["prompt_template"]).substitute(
+            document_type=document_type,
+            requirements_json=json.dumps(requirements, ensure_ascii=False),
+            kb_context=kb_context,
         )
         response = await self._agno.arun(prompt)
+        metrics = extract_metrics(response)
 
         data = extract_json(response.content) or {
             "enriched": requirements,
@@ -110,4 +112,5 @@ class ProcurementAgent:
             enriched=data.get("enriched", requirements),
             sources=all_sources,
             standards_applied=data.get("standards_applied", []),
+            metrics=metrics,
         )

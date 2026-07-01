@@ -101,3 +101,16 @@ flat_to_nested:
   timeline:
     - timeline
     - go_live
+
+prompt_template: |
+  Extract structured requirements from the user input below.
+  Type: $document_type | Title: $title
+  $clarifications_block
+  === INPUT ===
+  $raw_text
+  === END INPUT ===
+
+  Return ONLY valid JSON (no fences, no prose). Structure:
+  {"project":{"title":"","organization":"","reference_code":null,"description":""},"scope":{"objectives":[],"in_scope":[],"out_of_scope":[]},"functional_requirements":[{"id":"FR-001","title":"","description":"","priority":"MUST"}],"technical_requirements":[{"id":"TR-001","category":"","description":"","constraint":""}],"sla":{"metrics":[{"metric":"","target":"","note":""}],"penalties":""},"security_compliance":{"standards":[],"requirements":[],"data_classification":null},"timeline":{"project_start":null,"go_live":null,"milestones":[]},"integrations":[],"stakeholders":[],"constraints":[],"regulatory_references":[],"evaluation_criteria":[],"budget":{"indicative_value":"","currency":"EUR","notes":""},"search_terms":[]}
+
+  RULES: 1)Parse ALL sections 2)SLA table rows→sla.metrics[{metric,target}] 3)Min $min_fr FR with FR-001..FR-00N IDs 4)Min $min_tr TR with TR-001.. IDs 5)Unknown→null(string) or[](list) 6)search_terms: specific tech, max 10 7)NO fences, NO prose

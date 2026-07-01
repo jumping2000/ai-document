@@ -10,6 +10,7 @@ export function useWorkflowStream(workflowId: string | null) {
     updateWorkflowState,
     setAgentRunning,
     setAgentDone,
+    setAgentTokens,
     setQualityReport,
     setValidationResult,
     setDocumentContent,
@@ -43,6 +44,12 @@ export function useWorkflowStream(workflowId: string | null) {
           break;
         case 'agent_done':
           setAgentDone(msg.data.agent as AgentName, msg.data.duration_ms as number);
+          if ((msg.data as Record<string, unknown>).tokens) {
+            setAgentTokens(
+              msg.data.agent as AgentName,
+              (msg.data as Record<string, unknown>).tokens as { input: number; output: number; total: number },
+            );
+          }
           break;
         case 'quality_report':
           setQualityReport(msg.data as any);
@@ -61,9 +68,7 @@ export function useWorkflowStream(workflowId: string | null) {
           });
           break;
         case 'completed':
-          if (msg.data.document_content) {
-            setDocumentContent(msg.data.document_content as string);
-          }
+          setDocumentContent((msg.data.document_content as string) || '');
           setStreaming(false);
           break;
         case 'failed':

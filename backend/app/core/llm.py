@@ -7,6 +7,36 @@ from typing import Any
 from app.core.config import settings
 
 
+def extract_metrics(response: Any) -> dict[str, int]:
+    """Extract token counts from an Agno RunOutput, with char-based fallback."""
+    tokens: dict[str, int] = {}
+    # 1) Try RunMetrics
+    if hasattr(response, "metrics") and response.metrics:
+        m = response.metrics
+        inp = getattr(m, "input_tokens", 0) or 0
+        out = getattr(m, "output_tokens", 0) or 0
+        if inp > 0 or out > 0:
+            tokens = {
+                "input": inp,
+                "output": out,
+                "total": getattr(m, "total_tokens", 0) or inp + out,
+            }
+    # 2) Try per-message metrics (some providers populate these)
+    if not tokens and hasattr(response, "messages"):
+        inp = out = 0
+        for msg in response.messages:
+            if hasattr(msg, "metrics") and msg.metrics:
+                inp += getattr(msg.metrics, "input_tokens", 0) or 0
+                out += getattr(msg.metrics, "output_tokens", 0) or 0
+        if inp > 0 or out > 0:
+            tokens = {"input": inp, "output": out, "total": inp + out}
+    # 3) Fallback: estimate from content length (~3 chars/token for Italian)
+    if not tokens and hasattr(response, "content") and response.content:
+        out_est = max(1, len(str(response.content)) // 3)
+        tokens = {"input": 0, "output": out_est, "total": out_est}
+    return tokens
+
+
 def get_model_adapter(max_tokens: int | None = None) -> Any:
     provider = settings.default_ai_provider.lower()
     if max_tokens is None:

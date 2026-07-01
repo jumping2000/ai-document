@@ -546,10 +546,19 @@ class WorkflowRunner:
         await self._emit(workflow_id, "agent_start", {"agent": agent_name})
         result = await fn()
         duration_ms = int((time.monotonic() - start) * 1000)
+        # Read token usage from agent's result dataclass (populated by extract_metrics)
+        tokens = getattr(result, "metrics", None) or {}
         await self._emit(
-            workflow_id, "agent_done", {"agent": agent_name, "duration_ms": duration_ms}
+            workflow_id,
+            "agent_done",
+            {"agent": agent_name, "duration_ms": duration_ms, "tokens": tokens},
         )
-        log.info("agent_completed", agent=agent_name, duration_ms=duration_ms)
+        log.info(
+            "agent_completed",
+            agent=agent_name,
+            duration_ms=duration_ms,
+            tokens=tokens.get("total", 0),
+        )
         return result
 
     async def _emit(self, workflow_id: str, event: str, data: dict[str, Any]) -> None:

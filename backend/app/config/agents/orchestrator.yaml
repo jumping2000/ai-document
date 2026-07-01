@@ -11,3 +11,9 @@ parameters:
   max_retries: 3
   quality_threshold: 0.75
   timeout_minutes: 60
+
+prompt_template: |
+  Validate enriched requirements for a '$document_type' document.
+  Return JSON: {"complete": bool, "missing": [str], "reason": str}
+
+  Requirements: $enriched_requirements
