@@ -41,9 +41,11 @@ output_schema:
       description: "Descrizione del requisito tecnico"
       constraint: "Eventuale vincolo (opzionale)"
   sla:
-    K1: "99%"
-    K2: "1%"
-    K3: "0"
+    metrics:
+      - metric: "Disponibilità"
+        target: "99.9%"
+        note: ""
+    penalties: "Penali contrattuali applicabili in caso di mancato rispetto"
   security_compliance:
     standards:
       - "ISO 27001"
@@ -67,8 +69,8 @@ output_schema:
     - "Vincolo normativo"
     - "Vincolo budgetario"
   regulatory_references:
-    - code: "D.Lgs 36/2023"
-      description: "Codice contratti pubblici"
+    - code: "Es. GDPR, ISO 27001"
+      description: "Normativa di riferimento"
   evaluation_criteria:
     - criterion: "Prezzo"
       weight: "30%"
@@ -85,9 +87,7 @@ critical_fields:
   - "scope.objectives"
   - "functional_requirements"
   - "technical_requirements"
-  - "sla.K1"
-  - "sla.K2"
-  - "sla.K3"
+  - "sla.metrics"
   - "security_compliance.standards"
   - "timeline.go_live"
 

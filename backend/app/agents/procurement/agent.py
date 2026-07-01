@@ -30,7 +30,7 @@ class ProcurementAgent:
     def __init__(self) -> None:
         self._retrieval = RetrievalSkill()
         cfg = load_agent_config("procurement")
-        system_prompt = cfg.get("system_prompt", "")
+        system_prompt = cfg.get("system_prompt", []) if cfg else []
         if isinstance(system_prompt, list):
             instructions = [s.strip() for s in system_prompt if s.strip()]
         elif isinstance(system_prompt, str) and system_prompt.strip():
@@ -38,13 +38,7 @@ class ProcurementAgent:
                 line.strip() for line in system_prompt.strip().split("\n") if line.strip()
             ]
         else:
-            instructions = [
-                "Apply ISO 27001, ISO 9001, and GDPR where relevant.",
-                "Add SLA templates from the knowledge base.",
-                "Include security requirements from OWASP and CIS benchmarks.",
-                "Reference Italian public procurement code (D.Lgs. 36/2023) for capitolati.",
-                "Return enriched requirements as structured JSON.",
-            ]
+            instructions = ["Enrich requirements with standards and best practices."]
 
         self._agno = Agent(
             name="procurement_specialist",

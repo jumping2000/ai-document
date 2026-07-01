@@ -31,7 +31,7 @@ Supports three document types: **Capitolato di Gara** (procurement specification
 │                                                                 │
 │  StateMachine → drives state transitions with guards            │
 │                                                                 │
-│  INIT → BRIEFING → ENRICHMENT → VALIDATION → WRITING → QA → PENDING → ✓  │
+│  INIT→ BRIEFING→ ENRICHMENT→ VALIDATION→ WRITING→ QA→ PENDING→ ✓│
 │                                                                 │
 │  Retry loops (max 3 ciascuno):                                  │
 │    ✗ VALIDATION ──────────────────────► BRIEFING                │

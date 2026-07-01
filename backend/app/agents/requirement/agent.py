@@ -66,7 +66,7 @@ CANONICAL_SCHEMA = {
     "stakeholders": [{"role": "CIO / PM / DPO", "responsibilities": "Responsabilità principale"}],
     "constraints": ["Vincolo normativo", "Vincolo budgetario"],
     "regulatory_references": [
-        {"code": "D.Lgs 36/2023", "description": "Codice contratti pubblici"}
+        {"code": "Es. GDPR, ISO 27001", "description": "Normativa di riferimento"}
     ],
     "evaluation_criteria": [
         {"criterion": "Prezzo", "weight": "30%"},
@@ -215,18 +215,13 @@ class RequirementAgent:
         )
         self._min_fr = cfg.get("parameters", {}).get("min_functional_requirements", 3) if cfg else 3
         self._min_tr = cfg.get("parameters", {}).get("min_technical_requirements", 1) if cfg else 1
-        raw_prompt = cfg.get("system_prompt", "") if cfg else ""
+        raw_prompt = cfg.get("system_prompt", []) if cfg else []
         if isinstance(raw_prompt, list):
             instructions = raw_prompt
         elif isinstance(raw_prompt, str) and raw_prompt.strip():
             instructions = [line.strip() for line in raw_prompt.strip().split("\n") if line.strip()]
         else:
-            instructions = [
-                "Extract all required fields from user input.",
-                "Prioritize functional requirements by business impact.",
-                "Identify implicit requirements the user may have overlooked.",
-                "Always output valid, complete JSON with no prose.",
-            ]
+            instructions = ["Extract structured requirements from user input."]
 
         self._agno = Agent(
             name="requirement_analyst",
@@ -244,39 +239,54 @@ class RequirementAgent:
         existing: dict[str, Any],
     ) -> RequirementResult:
         import json as _json
+        import re
         import traceback
 
         log.info("requirement.collect.start", workflow_id=workflow_id)
 
-        try:
-            schema_json = _json.dumps(self._schema, indent=2, ensure_ascii=False)
-            existing_json = _json.dumps(existing, ensure_ascii=False) if existing else "none"
-        except (TypeError, ValueError) as exc:
-            log.error(
-                "requirement.collect.serialize_input_failed",
-                workflow_id=workflow_id,
-                error=str(exc),
-                traceback=traceback.format_exc(),
+        raw_text = existing.get("raw_description", "") if existing else ""
+        title = existing.get("title", "unknown") if existing else "unknown"
+        clarifications = existing.get("clarifications", []) if existing else []
+
+        clarifications_block = ""
+        if clarifications:
+            clarifications_block = (
+                "\nCLARIFICATIONS NEEDED (address these):\n"
+                + "\n".join(f"- {c}" for c in clarifications)
+                + "\n"
             )
-            raise
 
         prompt = (
-            "You are a senior IT Business Analyst.\n"
-            f"Document type: {document_type}\n"
-            f"Existing context: {existing_json}\n\n"
-            "Return ONLY a JSON object conforming to this schema:\n"
-            f"{schema_json}\n\n"
-            "Also extract 'search_terms': a list of specific technologies, products, "
-            "standards, frameworks, and systems mentioned in the user input. "
-            "Be specific: proper nouns, not generic concepts. Maximum 10 terms. "
-            "Examples: 'sessionmanager', 'OAuth2', 'PostgreSQL', 'Kubernetes', 'ISO 27001'.\n\n"
-            "Rules:\n"
-            "- Use null for unknown string fields, [] for unknown lists.\n"
-            f"- functional_requirements: at least {self._min_fr} items.\n"
-            f"- technical_requirements: at least {self._min_tr} item.\n"
-            "- All 'id' fields must be unique.\n"
-            "- priority must be MUST, SHOULD, or COULD.\n"
-            "- Do NOT include prose — only the JSON object."
+            "Extract structured requirements from the user input below.\n"
+            f"Type: {document_type} | Title: {title}\n"
+            f"{clarifications_block}\n"
+            "=== INPUT ===\n"
+            f"{raw_text}\n"
+            "=== END INPUT ===\n\n"
+            "Return ONLY valid JSON (no fences, no prose). Structure:\n"
+            '{"project":{"title":"","organization":"","reference_code":null,"description":""},'
+            '"scope":{"objectives":[],"in_scope":[],"out_of_scope":[]},'
+            f'"functional_requirements":[{{"id":"FR-001","title":"","description":"","priority":"MUST"}}],'
+            f'"technical_requirements":[{{"id":"TR-001","category":"","description":"","constraint":""}}],'
+            '"sla":{"metrics":[{"metric":"","target":"","note":""}],"penalties":""},'
+            '"security_compliance":{"standards":[],"requirements":[],"data_classification":null},'
+            '"timeline":{"project_start":null,"go_live":null,"milestones":[]},'
+            '"integrations":[],"stakeholders":[],"constraints":[],'
+            '"regulatory_references":[],"evaluation_criteria":[],'
+            '"budget":{"indicative_value":"","currency":"EUR","notes":""},'
+            '"search_terms":[]}\n'
+            "RULES: 1)Parse ALL sections 2)SLA table rows→sla.metrics[{metric,target}] "
+            f"3)Min {self._min_fr} FR with FR-001..FR-00N IDs 4)Min {self._min_tr} TR with TR-001.. IDs "
+            "5)Unknown→null(string) or[](list) 6)search_terms: specific tech, max 10 7)NO fences, NO prose"
+        )
+
+        log.info(
+            "requirement.collect.prompt",
+            workflow_id=workflow_id,
+            prompt_len=len(prompt),
+            raw_text_len=len(raw_text),
+            prompt_head=prompt[:300],
+            prompt_tail=prompt[-300:],
         )
 
         try:
@@ -292,7 +302,66 @@ class RequirementAgent:
 
         raw = extract_json(response.content)
         if raw is None:
-            raise RequirementError(f"Non-JSON response: {response.content[:200]}")
+            raise RequirementError(f"Non-JSON response: {str(response.content)[:200]}")
+
+        # ── Fallback: detect inner-object extraction ────────────────────────
+        # If extract_json returned a sub-object instead of the full structure,
+        # try direct parse or brace-counting extraction from the raw response.
+        _outer_keys = {
+            "project",
+            "scope",
+            "functional_requirements",
+            "technical_requirements",
+            "sla",
+            "security_compliance",
+            "timeline",
+            "integrations",
+            "stakeholders",
+            "constraints",
+            "regulatory_references",
+            "evaluation_criteria",
+            "budget",
+            "search_terms",
+        }
+        if isinstance(raw, dict) and not (_outer_keys & set(raw.keys())):
+            text = str(response.content) if response.content else ""
+            cleaned = re.sub(r"```(?:json)?\s*", "", text)
+            cleaned = re.sub(r"```", "", cleaned)
+            try:
+                direct = _json.loads(cleaned)
+                if isinstance(direct, dict) and (_outer_keys & set(direct.keys())):
+                    raw = direct
+            except (_json.JSONDecodeError, ValueError):
+                first = cleaned.find("{")
+                if first >= 0:
+                    depth = 0
+                    in_str = False
+                    esc = False
+                    for i in range(first, len(cleaned)):
+                        c = cleaned[i]
+                        if esc:
+                            esc = False
+                            continue
+                        if c == "\\":
+                            esc = True
+                            continue
+                        if c == '"':
+                            in_str = not in_str
+                            continue
+                        if in_str:
+                            continue
+                        if c == "{":
+                            depth += 1
+                        elif c == "}":
+                            depth -= 1
+                            if depth == 0:
+                                try:
+                                    direct = _json.loads(cleaned[first : i + 1])
+                                    if isinstance(direct, dict):
+                                        raw = direct
+                                except (_json.JSONDecodeError, ValueError):
+                                    pass
+                                break
 
         canon = normalize_to_canonical(raw)
 

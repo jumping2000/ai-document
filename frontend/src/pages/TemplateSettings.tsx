@@ -186,36 +186,6 @@ export default function TemplateSettings() {
     });
   };
 
-  // Validation preview state
-  const [previewInput, setPreviewInput] = useState('{\n  "project": {"title": "Test"}\n}');
-  const [previewResult, setPreviewResult] = useState<Record<string, unknown> | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-
-  const handleTestValidation = async () => {
-    if (!selectedType) return;
-    setPreviewLoading(true);
-    setPreviewResult(null);
-    try {
-      let parsed;
-      try {
-        parsed = JSON.parse(previewInput);
-      } catch {
-        setPreviewResult({ valid: false, issues: ['JSON non valido'] });
-        return;
-      }
-      const res = await fetch(`${API_BASE}/templates/${selectedType}/validate-preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requirements: parsed }),
-      });
-      if (res.ok) setPreviewResult(await res.json());
-    } catch {
-      setPreviewResult({ valid: false, issues: ['Errore di rete'] });
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
   if (!config && loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -225,7 +195,7 @@ export default function TemplateSettings() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="max-w-4xl mx-auto p-6 space-y-6 font-sans">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -425,139 +395,6 @@ export default function TemplateSettings() {
             )}
           </div>
 
-          {/* Validation Preview panel */}
-          <div className="border rounded-lg dark:border-gray-700">
-            <button
-              onClick={() => toggleSection_panel('validationPreview')}
-              className="w-full flex items-center gap-2 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-            >
-              {expandedSection === 'validationPreview' ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              <span className="font-medium">{t('template.validationPreview')}</span>
-            </button>
-            {expandedSection === 'validationPreview' && (
-              <div className="border-t dark:border-gray-700 p-4 space-y-3">
-                <textarea
-                  value={previewInput}
-                  onChange={e => setPreviewInput(e.target.value)}
-                  rows={6}
-                  className="w-full px-3 py-2 border rounded-lg text-sm font-mono dark:bg-gray-800 dark:border-gray-600"
-                  placeholder={t('template.testRequirements')}
-                />
-                <button
-                  onClick={handleTestValidation}
-                  disabled={previewLoading}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition"
-                >
-                  {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  {t('template.testValidation')}
-                </button>
-                {previewResult && (
-                  <div className={`p-3 rounded-lg text-sm ${
-                    previewResult.valid
-                      ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                      : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                  }`}>
-                    <p className="font-medium mb-2">
-                      {previewResult.valid ? t('template.validResult') : t('template.invalidResult')}
-                    </p>
-                    {previewResult.confidence !== undefined && (
-                      <p>{t('template.confidence')}: {(previewResult.confidence as number * 100).toFixed(0)}%</p>
-                    )}
-                    {(previewResult.missing_fields as string[])?.length > 0 && (
-                      <p>{t('template.missingFields')}: {(previewResult.missing_fields as string[]).join(', ')}</p>
-                    )}
-                    {(previewResult.issues as string[])?.length > 0 && (
-                      <div className="mt-1">
-                        <p className="font-medium">{t('template.issues')}:</p>
-                        <ul className="list-disc ml-4">
-                          {(previewResult.issues as string[]).map((issue, i) => <li key={i}>{issue}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                    {(previewResult.warnings as string[])?.length > 0 && (
-                      <div className="mt-1">
-                        <p className="font-medium">{t('template.warnings')}:</p>
-                        <ul className="list-disc ml-4">
-                          {(previewResult.warnings as string[]).map((w, i) => <li key={i}>{w}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* SLA rules panel */}
-          <div className="border rounded-lg dark:border-gray-700">
-            <button
-              onClick={() => toggleSection_panel('sla')}
-              className="w-full flex items-center gap-2 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-            >
-              {expandedSection === 'sla' ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              <span className="font-medium">{t('template.slaRules')}</span>
-            </button>
-            {expandedSection === 'sla' && config.sla_rules && (
-              <div className="border-t dark:border-gray-700 p-4">
-                {/* KPIs */}
-                <div className="mb-4">
-                  <p className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-2">
-                    KPI — {t('template.kpiRequired')}
-                  </p>
-                  {config.sla_rules.expected_kpis && config.sla_rules.expected_kpis.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-zinc-400 text-[10px] uppercase tracking-widest">
-                            <th className="py-2 pr-4">ID</th>
-                            <th className="py-2">{t('template.kpiLabel')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y dark:divide-zinc-800">
-                          {config.sla_rules.expected_kpis.map((kpi, i) => (
-                            <tr key={i}>
-                              <td className="py-2 pr-4 font-mono text-indigo-500">{kpi.field}</td>
-                              <td className="py-2 text-zinc-700 dark:text-zinc-300">{kpi.label}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-zinc-400">—</p>
-                  )}
-                </div>
-                {/* KPOs */}
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-2">
-                    KPO — {t('template.kpoTarget')}
-                  </p>
-                  {config.sla_rules.expected_kpos && config.sla_rules.expected_kpos.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-zinc-400 text-[10px] uppercase tracking-widest">
-                            <th className="py-2 pr-4">ID</th>
-                            <th className="py-2">{t('template.kpoTarget')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y dark:divide-zinc-800">
-                          {config.sla_rules.expected_kpos.map((kpo, i) => (
-                            <tr key={i}>
-                              <td className="py-2 pr-4 font-mono text-indigo-500">{kpo.field}</td>
-                              <td className="py-2 text-zinc-700 dark:text-zinc-300">{kpo.label}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-zinc-400">—</p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>

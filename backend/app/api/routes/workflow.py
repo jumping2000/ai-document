@@ -181,13 +181,34 @@ async def approve_workflow(
             detail=f"Workflow in state {wf.state} does not require approval",
         )
 
-    wf.state = "COMPLETED" if req.approved else "FAILED"
+    new_state = "COMPLETED" if req.approved else "FAILED"
+    wf.state = new_state
     wf.metadata_ = {
         **(wf.metadata_ or {}),
         "approval": {"approved": req.approved, "comment": req.comment},
     }
     db.add(wf)
     await db.commit()
+
+    # Emit WebSocket events so the frontend updates (runner is dead)
+    from app.workflows.execution.runner import _event_queues
+
+    queues = _event_queues.get(workflow_id, [])
+    doc_content = (wf.metadata_ or {}).get("document_content", "")
+    for q in queues:
+        await q.put({"event": "state_change", "data": {"state": new_state}})
+        await q.put(
+            {
+                "event": "completed",
+                "data": {
+                    "workflow_id": workflow_id,
+                    "document_content": doc_content,
+                },
+            }
+        )
+    if queues:
+        log.info("approval_events_emitted", workflow_id=workflow_id, state=new_state)
+
     return {"workflow_id": workflow_id, "action": action}
 
 

@@ -52,7 +52,7 @@ export interface WorkflowEvent {
 
 // ── Agents ────────────────────────────────────────────────────────────────────
 
-export type AgentName = 'requirement' | 'procurement' | 'lead_writer' | 'quality' | 'orchestrator';
+export type AgentName = 'requirement' | 'procurement' | 'lead_writer' | 'quality';
 
 export interface AgentStatus {
   name: AgentName;

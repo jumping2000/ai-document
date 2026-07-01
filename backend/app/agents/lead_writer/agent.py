@@ -37,7 +37,7 @@ class LeadWriterAgent:
         )
         self._exporter = ExportSkill()
         cfg = load_agent_config("lead_writer")
-        system_prompt = cfg.get("system_prompt", "")
+        system_prompt = cfg.get("system_prompt", []) if cfg else []
         if isinstance(system_prompt, list):
             instructions = [s.strip() for s in system_prompt if s.strip()]
         elif isinstance(system_prompt, str) and system_prompt.strip():
@@ -46,12 +46,7 @@ class LeadWriterAgent:
             ]
         else:
             instructions = [
-                "Write in clear, formal Italian or English as specified.",
-                "Follow the document template structure strictly.",
-                "Include all required sections: scope, requirements, SLA, security.",
-                "Use numbered sections and subsections.",
-                "Include a requirements traceability matrix.",
-                "Cite standards and regulations correctly.",
+                "Write professional IT procurement documents from structured requirements."
             ]
         self._default_templates = cfg.get("parameters", {}) if cfg else {}
 

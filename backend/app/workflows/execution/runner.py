@@ -30,6 +30,7 @@ from app.skills.validation.validation_skill import (
     score_requirement_richness,
     validate_document_sections,
     validate_requirements_completeness,
+    validate_sla_metrics,
 )
 from app.workflows.state_machine.machine import (
     StateMachine,
@@ -165,7 +166,9 @@ class WorkflowRunner:
                 sla = ctx.enriched_requirements.get("sla", {})
                 sla_val = validate_sla_metrics(sla, document_type)
                 if not sla_val.valid:
+                    validation.valid = False
                     validation.issues.extend(sla_val.issues)
+                    validation.missing_fields.extend(sla_val.missing_fields)
                 validation.warnings.extend(sla_val.warnings)
 
                 # NEW: Richness score (informational emit)
@@ -282,6 +285,21 @@ class WorkflowRunner:
                     )
                     ctx.draft_content = draft.markdown
 
+                    # Persist draft immediately so it survives runner crashes
+                    try:
+                        from app.db.models import Workflow as WFModel
+
+                        wf_row = await self.db.get(WFModel, uuid.UUID(workflow_id))
+                        if wf_row:
+                            wf_row.metadata_ = {
+                                **(wf_row.metadata_ or {}),
+                                "document_content": draft.markdown or "",
+                            }
+                            self.db.add(wf_row)
+                            await self.db.commit()
+                    except Exception:
+                        pass
+
                     # NEW: Post-write validation (informational only, does not block)
                     placeholders = detect_placeholder_content(draft.markdown)
                     if placeholders:
@@ -341,6 +359,7 @@ class WorkflowRunner:
                         await self._persist_state(
                             workflow_id, old, ctx.state, WorkflowTrigger.QUALITY_PASSED.value
                         )
+                        await self._emit(workflow_id, "state_change", {"state": ctx.state})
 
                         # Emit pending_approval event for the frontend
                         await self._emit(
@@ -371,10 +390,19 @@ class WorkflowRunner:
 
                         ctx.human_approved = approval.approved
                         old = ctx.state
-                        self.sm.trigger(ctx, WorkflowTrigger.HUMAN_APPROVED)
-                        await self._persist_state(
-                            workflow_id, old, ctx.state, WorkflowTrigger.HUMAN_APPROVED.value
-                        )
+                        try:
+                            self.sm.trigger(ctx, WorkflowTrigger.HUMAN_APPROVED)
+                            await self._persist_state(
+                                workflow_id, old, ctx.state, WorkflowTrigger.HUMAN_APPROVED.value
+                            )
+                            await self._emit(workflow_id, "state_change", {"state": ctx.state})
+                        except Exception as approval_exc:
+                            log.error(
+                                "approval_failed",
+                                workflow_id=workflow_id,
+                                error=str(approval_exc),
+                            )
+                            raise
                     elif report.needs_enrichment:
                         old = ctx.state
                         self.sm.trigger(ctx, WorkflowTrigger.QUALITY_FAILED_ENRICHMENT)

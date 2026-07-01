@@ -53,7 +53,7 @@ class OrchestratorAgent:
         self.quality_agent = QualityAgent()
 
         cfg = load_agent_config("orchestrator")
-        system_prompt = cfg.get("system_prompt", "")
+        system_prompt = cfg.get("system_prompt", []) if cfg else []
         if isinstance(system_prompt, list):
             instructions = [s.strip() for s in system_prompt if s.strip()]
         elif isinstance(system_prompt, str) and system_prompt.strip():
@@ -61,12 +61,7 @@ class OrchestratorAgent:
                 line.strip() for line in system_prompt.strip().split("\n") if line.strip()
             ]
         else:
-            instructions = [
-                "Coordinate a multi-agent workflow for IT document generation.",
-                "Validate each step output is complete before proceeding.",
-                "Decide whether quality issues require re-writing or re-enrichment.",
-                "Never proceed with incomplete or contradictory requirements.",
-            ]
+            instructions = ["Coordinate a multi-agent workflow for IT document generation."]
         self._max_retries = (
             cfg.get("parameters", {}).get("max_retries", settings.workflow_max_retries)
             if cfg

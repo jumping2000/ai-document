@@ -224,6 +224,7 @@ OLLAMA_URL=http://localhost:11434
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `MAX_TOKENS` | `16384` | Max output tokens per LLM call. The requirement agent needs ~8000+ to produce complete structured JSON for large inputs. Lower values risk truncated (invalid) JSON |
 | `WORKFLOW_QUALITY_THRESHOLD` | `0.75` | Minimum quality score (0.0–1.0) |
 | `WORKFLOW_MAX_RETRIES` | `3` | Max retries per phase |
 | `MCP_SERVER_URL` | — | External MCP/RAG server URL |

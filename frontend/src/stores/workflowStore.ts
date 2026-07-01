@@ -37,7 +37,6 @@ interface WorkflowStore {
 }
 
 const defaultAgentStatuses = (): Record<AgentName, AgentStatus> => ({
-  orchestrator: { name: 'orchestrator', status: 'idle' },
   requirement:  { name: 'requirement',  status: 'idle' },
   procurement:  { name: 'procurement',  status: 'idle' },
   lead_writer:  { name: 'lead_writer',  status: 'idle' },

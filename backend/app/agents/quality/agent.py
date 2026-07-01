@@ -54,7 +54,7 @@ class QualityAgent:
             if cfg
             else settings.workflow_quality_threshold
         )
-        system_prompt = cfg.get("system_prompt", "")
+        system_prompt = cfg.get("system_prompt", []) if cfg else []
         if isinstance(system_prompt, list):
             instructions = [s.strip() for s in system_prompt if s.strip()]
         elif isinstance(system_prompt, str) and system_prompt.strip():
@@ -62,13 +62,7 @@ class QualityAgent:
                 line.strip() for line in system_prompt.strip().split("\n") if line.strip()
             ]
         else:
-            instructions = [
-                "Check every item in the quality checklist.",
-                "Score each section from 0.0 to 1.0.",
-                "Identify missing sections, vague requirements, and inconsistencies.",
-                "Return a structured JSON quality report.",
-                "Be strict: a score above 0.75 requires ALL critical sections present.",
-            ]
+            instructions = ["Review document quality and return a structured JSON report."]
 
         self._agno = Agent(
             name="quality_reviewer",

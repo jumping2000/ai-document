@@ -6,7 +6,7 @@ Reads from environment variables / .env file.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     default_ai_model: str = "gpt-4o"
     default_ai_provider: Literal["openai", "anthropic", "openrouter", "ollama"] = "openai"
+    max_tokens: int = 16384
 
     # ── MCP / RAG ─────────────────────────────────────────────────────────────
     mcp_server_url: str = "http://localhost:8100/sse"

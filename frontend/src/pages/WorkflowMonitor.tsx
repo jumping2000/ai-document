@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, Zap, CheckCircle2, XCircle, Clock,
-  ChevronRight, Download, BarChart3, RefreshCw,
-  AlertTriangle, Layers, Brain, Search, PenTool, Shield,
+  ChevronRight, ChevronDown, Download, BarChart3, RefreshCw,
+  AlertTriangle, AlertCircle, Lightbulb, Brain, Search, PenTool, Shield,
   Database, FilePlus, Activity, ClipboardCheck, Settings
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -25,7 +25,6 @@ const STATES: WorkflowStateEnum[] = [
 ];
 
 const AGENT_META: Record<AgentName, { labelKey: string; icon: React.ElementType; color: string }> = {
-  orchestrator: { labelKey: 'agent.orchestrator', icon: Layers,   color: '#6366f1' },
   requirement:  { labelKey: 'agent.requirement',  icon: Brain,    color: '#22d3ee' },
   procurement:  { labelKey: 'agent.procurement',  icon: Search,   color: '#a78bfa' },
   lead_writer:  { labelKey: 'agent.leadWriter',   icon: PenTool,  color: '#34d399' },
@@ -201,9 +200,11 @@ function ApprovalPanel({
   suggestions: string[];
 }) {
   const { t } = useTranslation();
-  const [comment, setComment] = useState('');
+  const { updateWorkflowState } = useWorkflowStore();
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+  const [showIssues, setShowIsses] = useState(issues.length > 0);
+  const [showSuggestions, setShowSuggestions] = useState(suggestions.length > 0);
 
   async function handleApprove(approved: boolean) {
     setSending(true);
@@ -211,10 +212,21 @@ function ApprovalPanel({
       const res = await fetch(`${API_BASE}/workflow/${workflowId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approved, comment }),
+        body: JSON.stringify({ approved }),
       });
       if (res.ok) {
         setDone(true);
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          try {
+            const poll = await fetch(`${API_BASE}/workflow/${workflowId}`);
+            if (poll.ok) {
+              const data = await poll.json();
+              updateWorkflowState(data.state);
+              if (data.state === 'COMPLETED' || data.state === 'FAILED') break;
+            }
+          } catch { /* retry */ }
+        }
       }
     } catch (err) {
       console.error('Approval failed:', err);
@@ -225,13 +237,16 @@ function ApprovalPanel({
 
   if (done) {
     return (
-      <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-6 text-center">
-        <p className="text-sm text-amber-600 dark:text-amber-400 font-semibold">
+      <div className="bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl p-6 text-center">
+        <p className="text-sm text-emerald-600 dark:text-emerald-400 font-semibold">
           {t('approval.sending')}
         </p>
       </div>
     );
   }
+
+  const scoreColor = qualityScore >= 0.75 ? 'text-emerald-500' : qualityScore >= 0.5 ? 'text-amber-500' : 'text-red-500';
+  const scoreBg = qualityScore >= 0.75 ? 'bg-emerald-500' : qualityScore >= 0.5 ? 'bg-amber-500' : 'bg-red-500';
 
   return (
     <motion.div
@@ -250,29 +265,65 @@ function ApprovalPanel({
         {t('approval.waiting')}
       </p>
 
-      <div className="flex gap-2 text-xs text-zinc-500">
-        <span>Score: <strong>{Math.round(qualityScore * 100)}%</strong></span>
-        <span>|</span>
-        <span>Issues: <strong>{issues.length}</strong></span>
-        <span>|</span>
-        <span>Suggestions: <strong>{suggestions.length}</strong></span>
+      {/* Score bar */}
+      <div className="flex items-center gap-3">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{t('approval.score')}</span>
+        <div className="flex-1 h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full ${scoreBg} rounded-full transition-all duration-500`}
+            style={{ width: `${Math.round(qualityScore * 100)}%` }}
+          />
+        </div>
+        <span className={`text-xs font-bold ${scoreColor}`}>{Math.round(qualityScore * 100)}%</span>
       </div>
 
-      <div>
-        <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">
-          {t('approval.comment')}
-        </label>
-        <textarea
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          rows={2}
-          className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2
-                     text-xs text-zinc-900 dark:text-white placeholder-zinc-400 resize-none
-                     focus:outline-none focus:border-amber-500 transition-colors"
-        />
-      </div>
+      {/* Issues */}
+      {issues.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowIsses(!showIssues)}
+            className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-red-400 transition-colors"
+          >
+            {showIssues ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {t('approval.issues')} ({issues.length})
+          </button>
+          {showIssues && (
+            <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+              {issues.map((issue, i) => (
+                <li key={i} className="text-[11px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/5 rounded-lg px-3 py-1.5 flex items-start gap-1.5">
+                  <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                  <span>{issue}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
-      <div className="flex gap-3">
+      {/* Suggestions */}
+      {suggestions.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowSuggestions(!showSuggestions)}
+            className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-500 hover:text-amber-400 transition-colors"
+          >
+            {showSuggestions ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {t('approval.suggestions')} ({suggestions.length})
+          </button>
+          {showSuggestions && (
+            <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+              {suggestions.map((s, i) => (
+                <li key={i} className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/5 rounded-lg px-3 py-1.5 flex items-start gap-1.5">
+                  <Lightbulb size={12} className="mt-0.5 shrink-0" />
+                  <span>{s}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-3 pt-2">
         <button
           onClick={() => handleApprove(true)}
           disabled={sending}
